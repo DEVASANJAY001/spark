@@ -1,0 +1,44 @@
+{
+  "project_info": {
+    "project_number": "477160304299",
+    "firebase_url": "https://gets-a8675-default-rtdb.firebaseio.com",
+    "project_id": "gets-a8675",
+    "storage_bucket": "gets-a8675.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:477160304299:android:b08b76e7959f2bc2fc91ee",
+        "android_client_info": {
+          "package_name": "com.davnsindustries.spark"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "477160304299-nn4n4ct3r93m31afpd6mt44qqmq5eaud.apps.googleusercontent.com",
+          "client_type": 1
+        },
+        {
+          "client_id": "477160304299-o4b3bhk52gmvt7j082a14erk3su1ub43.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDwK0Qmv55O7wdEZHByaqXH3ruhG2cUCUk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "477160304299-nn4n4ct3r93m31afpd6mt44qqmq5eaud.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

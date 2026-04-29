@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "gets",
-    "slug": "gets",
+    "name": "spark",
+    "slug": "spark",
+    "scheme": "spark",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,14 +16,41 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.devasanjay123.spark",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA"
+      ]
     },
+    "plugins": [
+      "expo-location",
+      "expo-image-picker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.8.10",
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "buildToolsVersion": "34.0.0"
+          }
+        }
+      ],
+      "@react-native-google-signin/google-signin"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "78bec517-6705-479e-af05-a47c52fa49a6"
+      }
     }
   }
 }

@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "spark",
+    "slug": "spark",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.devasanjay123.spark"
+    },
+    "android": {
+      "package": "com.davnsindustries.spark",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "plugins": [
+      "expo-location",
+      "expo-image-picker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.1.21",
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ],
+      "@react-native-google-signin/google-signin",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "78bec517-6705-479e-af05-a47c52fa49a6"
+      }
+    }
+  }
+}
