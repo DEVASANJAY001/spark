@@ -98,6 +98,46 @@ const SubscriptionScreen = () => {
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <Text style={styles.tagline}>Unlock premium features and find your perfect match faster.</Text>
 
+                {/* Free Plan Info Card */}
+                <View style={[styles.planCard, { opacity: 0.8, backgroundColor: 'rgba(255,255,255,0.03)' }]}>
+                    <View style={styles.planHeader}>
+                        <Text style={[styles.planName, { color: '#888' }]}>FREE PLAN (Basic)</Text>
+                        <Text style={[styles.planPrice, { color: '#888' }]}>FREE</Text>
+                    </View>
+                    <View style={styles.featuresList}>
+                        <Text style={styles.sectionHeader}>YOU CAN:</Text>
+                        <View style={styles.featureRow}>
+                            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                            <Text style={styles.featureText}>Swipe (limited per day)</Text>
+                        </View>
+                        <View style={styles.featureRow}>
+                            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                            <Text style={styles.featureText}>Match and chat</Text>
+                        </View>
+                        <View style={styles.featureRow}>
+                            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                            <Text style={styles.featureText}>Basic filters (age, distance)</Text>
+                        </View>
+                        
+                        <Text style={[styles.sectionHeader, { marginTop: 10 }]}>YOU CANNOT:</Text>
+                        <View style={styles.featureRow}>
+                            <Ionicons name="close-circle" size={16} color="#F44336" />
+                            <Text style={styles.featureText}>Swipe unlimited / Rewind</Text>
+                        </View>
+                        <View style={styles.featureRow}>
+                            <Ionicons name="close-circle" size={16} color="#F44336" />
+                            <Text style={styles.featureText}>See who liked you / Top Picks</Text>
+                        </View>
+                        <View style={styles.featureRow}>
+                            <Ionicons name="close-circle" size={16} color="#F44336" />
+                            <Text style={styles.featureText}>Change location / No Ads</Text>
+                        </View>
+                    </View>
+                </View>
+
+                <View style={styles.divider} />
+                <Text style={styles.premiumHeader}>Available Upgrades</Text>
+
                 {/* Redeem Section */}
                 <View style={styles.redeemSection}>
                     <Text style={styles.redeemTitle}>Have a promo code?</Text>
@@ -220,6 +260,25 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginVertical: 20,
         lineHeight: 22,
+    },
+    sectionHeader: {
+        color: '#666',
+        fontSize: 10,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+        marginBottom: 8,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginVertical: 30,
+    },
+    premiumHeader: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        marginBottom: 20,
     },
     plansContainer: {
         gap: 15,

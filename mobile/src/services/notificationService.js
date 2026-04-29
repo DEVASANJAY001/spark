@@ -33,7 +33,7 @@ export const notificationService = {
             
             if (userId && token) {
                 await updateDoc(doc(db, 'users', userId), {
-                    pushToken: token
+                    expoPushToken: token
                 });
             }
         } else {

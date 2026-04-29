@@ -14,9 +14,48 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const plans = [
-    { id: 'plus', name: 'Spark Plus', price: 199, period: 'month', features: ['Unlimited Likes', 'Unlimited Rewinds', 'Passport™ Mode', 'No Ads'], colors: ['#FF006E', '#FF4D94'] },
-    { id: 'gold', name: 'Spark Gold', price: 319, period: 'month', features: ['See Who Likes You', 'New Top Picks Daily', '5 Super Likes a week', '1 Free Boost a month'], colors: ['#D4AF37', '#FFD700'], popular: true },
-    { id: 'platinum', name: 'Spark Platinum', price: 769, period: 'month', features: ['Message before matching', 'Priority Likes', 'See Likes you’ve sent', 'All Gold features'], colors: ['#424242', '#212121'] }
+    { 
+        id: 'plus', 
+        name: 'Spark Plus', 
+        price: 199, 
+        period: 'month', 
+        features: [
+            'Unlimited Likes', 
+            'Unlimited Rewinds', 
+            'Passport™ Mode (Change location)', 
+            'No Ads', 
+            'Incognito Mode'
+        ], 
+        colors: ['#FF006E', '#FF4D94'] 
+    },
+    { 
+        id: 'gold', 
+        name: 'Spark Gold', 
+        price: 319, 
+        period: 'month', 
+        features: [
+            'Everything in Plus', 
+            'See Who Likes You', 
+            'New Top Picks Daily', 
+            'Weekly Super Likes', 
+            '1 Free Boost a month'
+        ], 
+        colors: ['#D4AF37', '#FFD700'], 
+        popular: true 
+    },
+    { 
+        id: 'platinum', 
+        name: 'Spark Platinum', 
+        price: 769, 
+        period: 'month', 
+        features: [
+            'Everything in Gold', 
+            'Message before matching', 
+            'Priority Likes', 
+            'See Likes you’ve sent (History)'
+        ], 
+        colors: ['#424242', '#212121'] 
+    }
 ];
 
 const seed = async () => {

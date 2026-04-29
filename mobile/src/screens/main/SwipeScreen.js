@@ -51,8 +51,30 @@ const SwipeScreen = () => {
         const targetUser = cards[index];
         if (!targetUser || !user) return;
 
+        // Check Swipe Limit for free users
+        if (type === 'like') {
+            const canSwipe = await userService.checkSwipeLimit(user.uid, profile);
+            if (!canSwipe) {
+                Alert.alert(
+                    "Daily Limit Reached",
+                    "Upgrade to Spark Plus for unlimited likes!",
+                    [
+                        { text: "Later", style: "cancel" },
+                        { text: "Upgrade", onPress: () => navigation.navigate('Profile', { screen: 'Subscription' }) }
+                    ]
+                );
+                swiperRef.current?.swipeBack();
+                return;
+            }
+        }
+
         try {
             const result = await swipeService.handleSwipe(user.uid, targetUser.id, type);
+            
+            if (type === 'like') {
+                await userService.incrementSwipeCount(user.uid, profile);
+            }
+
             if (result?.isMatch) {
                 setMatchedUser(targetUser);
                 setShowMatchModal(true);
@@ -64,6 +86,20 @@ const SwipeScreen = () => {
 
     const handleReset = async () => {
         if (!user) return;
+        
+        const canRewind = userService.canUseFeature(profile, 'rewind');
+        if (!canRewind) {
+            Alert.alert(
+                "Spark Plus Feature",
+                "Upgrade to Spark Plus to rewind your swipes!",
+                [
+                    { text: "Later", style: "cancel" },
+                    { text: "Upgrade", onPress: () => navigation.navigate('Subscription') }
+                ]
+            );
+            return;
+        }
+
         setLoading(true);
         try {
             await swipeService.resetSwipes(user.uid);
@@ -107,7 +143,7 @@ const SwipeScreen = () => {
                     <Ionicons name="options" size={26} color={colors.textSecondary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>spark</Text>
-                <TouchableOpacity onPress={() => navigation.navigate('Profile', { screen: 'Subscription' })}>
+                <TouchableOpacity onPress={() => navigation.navigate('Subscription')}>
                     <LinearGradient colors={[COLORS.primary, '#ff7854']} style={styles.headerAction}>
                         <Ionicons name="flash" size={18} color="white" />
                     </LinearGradient>
@@ -120,7 +156,12 @@ const SwipeScreen = () => {
                     <Swiper
                         ref={swiperRef}
                         cards={cards}
-                        renderCard={(card) => <SwipeCard profile={card} />}
+                        renderCard={(card) => (
+                            <SwipeCard 
+                                profile={card} 
+                                currentUserLocation={profile?.location} 
+                            />
+                        )}
                         onSwipedLeft={(index) => handleSwipe(index, 'pass')}
                         onSwipedRight={(index) => handleSwipe(index, 'like')}
                         onSwipedTop={(index) => handleSwipe(index, 'like')}

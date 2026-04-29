@@ -21,6 +21,15 @@ const useAuth = () => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         setIsProfileComplete(data.isProfileComplete || false);
+                        
+                        // Redundant sync for premium status to ensure app-wide consistency
+                        if (data.premiumTier) {
+                            setProfile(prev => ({ 
+                                ...prev, 
+                                premiumTier: data.premiumTier, 
+                                hasPremium: data.hasPremium 
+                            }));
+                        }
                     }
                 });
 
@@ -33,7 +42,13 @@ const useAuth = () => {
                         // Merge with photos if they exist (cached locally or listened via sibling)
                         // Actually, let's just listen to the whole user node for simplicity
                         // or stick to specific nodes if performance is a concern.
-                        setProfile(prev => ({ ...prev, ...rtdbProfile }));
+                        setProfile(prev => {
+                            // Only trigger session update once per profile load
+                            if (!prev && rtdbProfile) {
+                                userService.updateLastSessionInfo(authUser.uid);
+                            }
+                            return { ...prev, ...rtdbProfile };
+                        });
                     }
                     setLoading(false);
                 });

@@ -8,6 +8,8 @@ import OnboardingStack from './OnboardingStack';
 import MainTabNavigator from './MainTabNavigator';
 import SplashScreen from '../components/SplashScreen';
 import LocationGateScreen from '../screens/onboarding/LocationGateScreen';
+import SubscriptionScreen from '../screens/main/SubscriptionScreen';
+import PaymentScreen from '../screens/main/PaymentScreen';
 import useAuth from '../hooks/useAuth';
 import { presenceService } from '../services/presenceService';
 import { notificationService } from '../services/notificationService';
@@ -128,7 +130,11 @@ const RootNavigator = () => {
                 ) : !isProfileComplete ? (
                     <Stack.Screen name="Onboarding" component={OnboardingStack} />
                 ) : (
-                    <Stack.Screen name="Main" component={MainTabNavigator} />
+                    <>
+                        <Stack.Screen name="Main" component={MainTabNavigator} />
+                        <Stack.Screen name="Subscription" component={SubscriptionScreen} />
+                        <Stack.Screen name="Payment" component={PaymentScreen} />
+                    </>
                 )}
             </Stack.Navigator>
         </NavigationContainer>

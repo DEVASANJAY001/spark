@@ -7,7 +7,7 @@ import { useTheme } from '../../context/ThemeContext';
 import useAuth from '../../hooks/useAuth';
 import { chatService } from '../../services/chatService';
 import { userService } from '../../services/userService';
-import Wordmark from '../../../assets/wordmark.png';
+import Wordmark from '../../../assets/wordmark.jpg';
 
 const ChatScreen = ({ navigation }) => {
     const { colors } = useTheme();

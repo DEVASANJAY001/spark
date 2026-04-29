@@ -10,7 +10,7 @@ import { useTheme } from '../../context/ThemeContext';
 
 const TransactionsScreen = () => {
     const { colors } = useTheme();
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -99,6 +99,35 @@ const TransactionsScreen = () => {
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]}>All your payments and redemptions</Text>
             </View>
 
+            {/* Current Plan Card */}
+            <View style={[styles.currentPlanCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.planInfo}>
+                    <View style={styles.planIconContainer}>
+                        <Ionicons name="ribbon" size={24} color={profile?.hasPremium ? COLORS.primary : colors.textSecondary} />
+                    </View>
+                    <View>
+                        <Text style={[styles.planLabel, { color: colors.textSecondary }]}>Current Plan</Text>
+                        <Text style={[styles.planNameText, { color: colors.text }]}>
+                            {profile?.hasPremium ? `Spark ${profile.premiumTier?.toUpperCase() || 'PLUS'}` : 'Free Plan'}
+                        </Text>
+                    </View>
+                </View>
+                {profile?.hasPremium && profile?.premiumExpiry && (
+                    <View style={styles.expiryInfo}>
+                        <Text style={[styles.expiryLabel, { color: colors.textSecondary }]}>Expires on</Text>
+                        <Text style={[styles.expiryDate, { color: colors.text }]}>
+                            {new Date(profile.premiumExpiry).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                            })}
+                        </Text>
+                    </View>
+                )}
+            </View>
+
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Recent Transactions</Text>
+
             {loading ? (
                 <View style={styles.center}>
                     <ActivityIndicator size="large" color={COLORS.primary} />
@@ -138,6 +167,56 @@ const styles = StyleSheet.create({
     subtitle: {
         fontSize: 14,
         marginTop: 5,
+    },
+    currentPlanCard: {
+        margin: 20,
+        marginTop: 0,
+        padding: 20,
+        borderRadius: 20,
+        borderWidth: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    planInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    planIconContainer: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: 'rgba(253, 38, 125, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    planLabel: {
+        fontSize: 12,
+        marginBottom: 2,
+    },
+    planNameText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    expiryInfo: {
+        alignItems: 'flex-end',
+    },
+    expiryLabel: {
+        fontSize: 10,
+        marginBottom: 2,
+    },
+    expiryDate: {
+        fontSize: 12,
+        fontWeight: 'bold',
+    },
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+        marginLeft: 20,
+        marginBottom: 10,
+        letterSpacing: 1,
     },
     list: {
         paddingHorizontal: 20,

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "expo start",
+    "start": "set CI=1&& set EXPO_OFFLINE=1&& set EXPO_NO_DEPENDENCY_VALIDATION=1&& set CHOKIDAR_USEPOLLING=1&& set WATCHMAN_WIN7_NOTIFY=1&& expo start",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },

@@ -19,15 +19,22 @@ const Notifications = () => {
 
   const fetchUsers = async () => {
     try {
-      const q = query(collection(db, 'users'), orderBy('updatedAt', 'desc'), limit(500))
+      const q = query(collection(db, 'users'), orderBy('updatedAt', 'desc'), limit(1000))
       const querySnapshot = await getDocs(q)
-      const fetchedUsers = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).filter(u => u.expoPushToken)
+      const fetchedUsers = querySnapshot.docs.map(doc => {
+        const data = doc.data()
+        const token = data.expoPushToken || data.pushToken
+        return {
+          id: doc.id,
+          ...data,
+          expoPushToken: token, // Normalize to expoPushToken for the logic
+          hasToken: !!token
+        }
+      })
       setUsers(fetchedUsers)
     } catch (error) {
       console.error('Error fetching users:', error)
+      setStatus({ type: 'error', text: 'Failed to load users from database.' })
     }
   }
 
@@ -40,68 +47,92 @@ const Notifications = () => {
 
     let tokens = []
     
-    if (sendToAll) {
-        // Fetch ALL users with tokens from Firestore directly to be sure
-        try {
-            const q = query(collection(db, 'users'))
-            const querySnapshot = await getDocs(q)
-            tokens = querySnapshot.docs
-                .map(doc => doc.data().expoPushToken)
-                .filter(t => t)
-        } catch (e) {
-            console.error('Error fetching all tokens:', e)
-        }
-    } else {
-        tokens = selectedUsers.map(id => users.find(u => u.id === id)?.expoPushToken).filter(t => t)
-    }
-    
-    if (tokens.length === 0) {
-        setStatus({ type: 'error', text: 'No valid push tokens found.' })
-        setSending(false)
-        return
-    }
-
     try {
-      // expo-notifications requires sending in chunks of 100
-      const chunks = []
-      for (let i = 0; i < tokens.length; i += 100) {
-          chunks.push(tokens.slice(i, i + 100))
-      }
+        if (sendToAll) {
+            // Get all unique tokens from all users
+            tokens = users
+                .map(u => u.expoPushToken)
+                .filter(t => t && typeof t === 'string' && t.startsWith('ExponentPushToken'))
+            
+            // Deduplicate tokens
+            tokens = [...new Set(tokens)]
+        } else {
+            tokens = selectedUsers
+                .map(id => users.find(u => u.id === id)?.expoPushToken)
+                .filter(t => t)
+        }
+        
+        if (tokens.length === 0) {
+            setStatus({ type: 'error', text: 'No users with valid push tokens were selected.' })
+            setSending(false)
+            return
+        }
 
-      let successCount = 0
-      for (const chunk of chunks) {
-          const response = await fetch('https://exp.host/--/api/v2/push/send', {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'Accept-encoding': 'gzip, deflate',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(chunk.map(token => ({
-              to: token,
-              title: title,
-              body: message,
-              data: { type: 'admin_broadcast' },
-              sound: 'default'
-            }))),
-          })
-          if (response.ok) successCount += chunk.length
-      }
+        // expo-notifications requires sending in chunks of 100
+        const chunks = []
+        for (let i = 0; i < tokens.length; i += 100) {
+            chunks.push(tokens.slice(i, i + 100))
+        }
 
-      setStatus({ type: 'success', text: `Notification sent to ${successCount} users successfully!` })
-      setTitle('')
-      setMessage('')
-      setSelectedUsers([])
-      setSendToAll(false)
+        let successCount = 0
+        let failureCount = 0
+
+        for (const chunk of chunks) {
+            try {
+                const response = await fetch('/expo-api/--/api/v2/push/send', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Accept-encoding': 'gzip, deflate',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(chunk.map(token => ({
+                        to: token,
+                        title: title,
+                        body: message,
+                        data: { type: 'admin_broadcast' },
+                        sound: 'default'
+                    }))),
+                })
+                
+                const result = await response.json()
+                
+                if (response.ok) {
+                    successCount += chunk.length
+                } else {
+                    console.error('Expo API error:', result)
+                    failureCount += chunk.length
+                }
+            } catch (chunkError) {
+                console.error('Chunk sending error:', chunkError)
+                failureCount += chunk.length
+            }
+        }
+
+        if (successCount > 0) {
+            setStatus({ 
+                type: 'success', 
+                text: `Broadcast complete! Successfully sent to ${successCount} users.${failureCount > 0 ? ` (${failureCount} failed)` : ''}` 
+            })
+            setTitle('')
+            setMessage('')
+            setSelectedUsers([])
+            setSendToAll(false)
+        } else {
+            setStatus({ type: 'error', text: 'Failed to send notifications. Check console for details.' })
+        }
     } catch (error) {
       console.error('Error sending notifications:', error)
-      setStatus({ type: 'error', text: 'An error occurred while sending notifications.' })
+      setStatus({ type: 'error', text: `Error: ${error.message}` })
     } finally {
       setSending(false)
     }
   }
 
   const toggleUserSelection = (userId) => {
+    const user = users.find(u => u.id === userId)
+    if (!user?.hasToken) return // Prevent selecting users without tokens
+
     if (selectedUsers.includes(userId)) {
       setSelectedUsers(selectedUsers.filter(id => id !== userId))
     } else {
@@ -110,10 +141,11 @@ const Notifications = () => {
   }
 
   const selectAll = () => {
-    if (selectedUsers.length === filteredUsers.length) {
+    const usersWithTokens = filteredUsers.filter(u => u.hasToken)
+    if (selectedUsers.length === usersWithTokens.length) {
       setSelectedUsers([])
     } else {
-      setSelectedUsers(filteredUsers.map(u => u.id))
+      setSelectedUsers(usersWithTokens.map(u => u.id))
     }
   }
 
@@ -122,13 +154,15 @@ const Notifications = () => {
     u.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  const usersWithTokensCount = users.filter(u => u.hasToken).length;
+
   return (
     <div className="flex flex-col gap-8 animate-in fade-in duration-500 max-w-6xl mx-auto">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-black tracking-tight">Push Notifications</h1>
         <div className="flex items-center gap-2 text-sm text-gray-500 bg-white/5 px-4 py-2 rounded-xl">
           <Smartphone size={16} />
-          <span>{users.length} Users with Push enabled</span>
+          <span>{usersWithTokensCount} / {users.length} Users with Push enabled</span>
         </div>
       </div>
 
@@ -171,7 +205,7 @@ const Notifications = () => {
                     onChange={(e) => setSendToAll(e.target.checked)}
                 />
                 <label htmlFor="sendToAll" className="text-sm font-bold cursor-pointer select-none">
-                    Broadcast to All Users ({users.length}+ users)
+                    Broadcast to All Users ({usersWithTokensCount} reachable users)
                 </label>
               </div>
             </div>
@@ -221,7 +255,7 @@ const Notifications = () => {
                 onClick={selectAll}
                 className="text-xs font-bold text-primary hover:underline text-left"
               >
-                {selectedUsers.length === filteredUsers.length ? 'Deselect All' : 'Select All Filtered'}
+                {selectedUsers.length === filteredUsers.filter(u => u.hasToken).length ? 'Deselect All reachable' : 'Select All reachable'}
               </button>
             </div>
 
@@ -229,7 +263,7 @@ const Notifications = () => {
               {filteredUsers.map((user) => (
                 <div 
                   key={user.id} 
-                  className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-colors ${selectedUsers.includes(user.id) ? 'bg-primary/5' : ''}`}
+                  className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-colors ${selectedUsers.includes(user.id) ? 'bg-primary/5' : ''} ${!user.hasToken ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                   onClick={() => toggleUserSelection(user.id)}
                 >
                   <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${selectedUsers.includes(user.id) ? 'bg-primary border-primary' : 'border-white/20'}`}>
@@ -237,8 +271,11 @@ const Notifications = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold truncate">{user.firstName || 'User'}</p>
-                    <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                    <p className="text-[10px] text-gray-500 truncate">{user.email || user.id}</p>
                   </div>
+                  {!user.hasToken && (
+                    <span className="text-[8px] font-black bg-white/10 text-gray-400 px-1.5 py-0.5 rounded uppercase">No Push</span>
+                  )}
                 </div>
               ))}
               {filteredUsers.length === 0 && (

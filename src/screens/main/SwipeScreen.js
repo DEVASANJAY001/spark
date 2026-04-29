@@ -11,7 +11,7 @@ import { COLORS, SPACING } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import useAuth from '../../hooks/useAuth';
 import { swipeService } from '../../services/swipeService';
-import Wordmark from '../../../assets/wordmark.png';
+import Wordmark from '../../../assets/wordmark.jpg';
 
 const { width, height } = Dimensions.get('window');
 

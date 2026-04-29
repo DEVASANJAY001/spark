@@ -24,7 +24,7 @@ export const userService = {
             const discoveryFields = [
                 'firstName', 'birthday', 'gender', 'interestedIn',
                 'lookingFor', 'city', 'isProfileComplete', 'premiumTier',
-                'locationEnabled', 'username', 'photos'
+                'hasPremium', 'locationEnabled', 'username', 'photos'
             ];
             const discoveryData = {};
             discoveryFields.forEach(field => {
@@ -42,9 +42,9 @@ export const userService = {
                 updatedAt: serverTimestamp(),
             }, { merge: true });
 
-            console.log(`✅ Profile updated in both Firestore and RTDB for ${uid}`);
+            console.log(`[UserService] ✅ Profile sync complete for ${uid}. New Tier: ${discoveryData.premiumTier}`);
         } catch (error) {
-            console.error('Error in saveProfile:', error);
+            console.error('[UserService] ❌ Error in saveProfile:', error);
             throw error;
         }
     },
@@ -321,5 +321,121 @@ export const userService = {
         });
 
         return unsubscribeProfile;
+    },
+
+    /**
+     * Check if a user has access to a specific feature based on their tier
+     */
+    canUseFeature: (profile, feature) => {
+        if (!profile) return false;
+        const tier = profile.premiumTier || 'basic';
+        const hasPremium = profile.hasPremium || false;
+
+        const tiers = {
+            basic: 0,
+            plus: 1,
+            gold: 2,
+            platinum: 3
+        };
+
+        const currentLevel = hasPremium ? tiers[tier] : 0;
+
+        switch (feature) {
+            case 'unlimited_likes':
+                return currentLevel >= 1;
+            case 'rewind':
+                return currentLevel >= 1;
+            case 'passport':
+                return currentLevel >= 1;
+            case 'no_ads':
+                return currentLevel >= 1;
+            case 'incognito':
+                return currentLevel >= 1;
+            case 'see_likes':
+                return currentLevel >= 2;
+            case 'top_picks':
+                return currentLevel >= 2;
+            case 'super_likes':
+                return currentLevel >= 2;
+            case 'boost':
+                return currentLevel >= 2;
+            case 'message_before_match':
+                return currentLevel >= 3;
+            case 'priority_likes':
+                return currentLevel >= 3;
+            case 'see_sent_likes':
+                return currentLevel >= 3;
+            default:
+                return false;
+        }
+    },
+
+    /**
+     * Track and limit daily swipes for free users
+     */
+    checkSwipeLimit: async (uid, profile) => {
+        if (!profile) return true;
+        if (profile.hasPremium) return true;
+
+        const today = new Date().toISOString().split('T')[0];
+        const lastSwipeDate = profile.lastSwipeDate || '';
+        const dailyCount = lastSwipeDate === today ? (profile.dailySwipeCount || 0) : 0;
+
+        const LIMIT = 10; // Basic plan limit
+        return dailyCount < LIMIT;
+    },
+
+    incrementSwipeCount: async (uid, profile) => {
+        if (!profile || profile.hasPremium) return;
+
+        const today = new Date().toISOString().split('T')[0];
+        const lastSwipeDate = profile.lastSwipeDate || '';
+        const dailyCount = lastSwipeDate === today ? (profile.dailySwipeCount || 0) : 0;
+
+        await updateDoc(doc(db, 'users', uid), {
+            dailySwipeCount: dailyCount + 1,
+            lastSwipeDate: today
+        });
+    },
+
+    /**
+     * Calculate distance between two points in miles using Haversine formula
+     */
+    calculateDistance: (lat1, lon1, lat2, lon2) => {
+        if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+        
+        const R = 3958.8; // Earth's radius in miles
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = R * c;
+        
+        return Math.round(distance * 10) / 10; // Round to 1 decimal place
+    },
+
+    /**
+     * Update user's last session IP and location
+     */
+    updateLastSessionInfo: async (uid) => {
+        try {
+            // 1. Get IP
+            const ipResponse = await fetch('https://api.ipify.org?format=json');
+            const { ip } = await ipResponse.json();
+
+            // 2. Update Firestore
+            const userRef = doc(db, 'users', uid);
+            await updateDoc(userRef, {
+                lastIp: ip,
+                lastSessionAt: serverTimestamp()
+            });
+
+            console.log(`[UserService] Session info updated for ${uid}: ${ip}`);
+        } catch (error) {
+            console.warn('[UserService] Could not update session info:', error.message);
+        }
     }
 };

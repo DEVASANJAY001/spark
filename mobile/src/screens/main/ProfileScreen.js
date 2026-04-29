@@ -70,7 +70,6 @@ const ProfileScreen = ({ navigation }) => {
                 {/* Modern Header with Logo */}
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
-                        <Image source={require('../../../assets/icon.png')} style={styles.appLogo} />
                         <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
                     </View>
                     <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsBtn}>

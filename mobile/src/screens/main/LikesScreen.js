@@ -22,6 +22,8 @@ const LikesScreen = () => {
     const [activeTab, setActiveTab] = useState('Likes');
     const [upgradeTier, setUpgradeTier] = useState('gold');
     const [matchedUids, setMatchedUids] = useState(new Set());
+    const [topPicks, setTopPicks] = useState([]);
+    const [loadingPicks, setLoadingPicks] = useState(false);
 
     const openUpgrade = (tier) => {
         setUpgradeTier(tier);
@@ -35,15 +37,10 @@ const LikesScreen = () => {
         { id: 'verified', label: 'Photo Verified' },
     ];
 
-    const topPicks = [
-        { id: '1', firstName: 'Sarah', age: 24, photos: ['https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=800'], expiresAt: '14h left', interest: 'Foodie' },
-        { id: '2', firstName: 'Emma', age: 22, photos: ['https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400'], expiresAt: '10h left', interest: 'Traveler' },
-        { id: '3', firstName: 'Olivia', age: 25, photos: ['https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'], expiresAt: '8h left', interest: 'Music' },
-        { id: '4', firstName: 'Ava', age: 23, photos: ['https://images.unsplash.com/photo-1464863979621-258859e62245?w=400'], expiresAt: '4h left', interest: 'Art' },
-    ];
+
 
     useEffect(() => {
-        if (user) {
+        if (user && profile) {
             const unsubscribeLikes = swipeService.getLikes(user.uid, ({ likes, count }) => {
                 setLikes(likes);
                 setLikesCount(count);
@@ -54,12 +51,21 @@ const LikesScreen = () => {
                 setMatchedUids(uids);
             });
 
+            // Fetch Top Picks
+            const fetchTopPicks = async () => {
+                setLoadingPicks(true);
+                const picks = await swipeService.getTopPicks(user.uid, profile.interestedIn || 'Everyone');
+                setTopPicks(picks);
+                setLoadingPicks(false);
+            };
+            fetchTopPicks();
+
             return () => {
                 unsubscribeLikes();
                 unsubscribeMatches();
             };
         }
-    }, [user]);
+    }, [user, profile?.interestedIn]);
 
     const renderFilterChip = ({ item }) => (
         <TouchableOpacity style={styles.filterChip}>
@@ -72,11 +78,11 @@ const LikesScreen = () => {
     );
 
     const renderLikeCard = ({ item, index }) => {
-        const isPremium = profile?.hasPremium || profile?.premiumTier === 'gold' || profile?.premiumTier === 'platinum';
+        const canSeeLikes = userService.canUseFeature(profile, 'see_likes');
         const isMatched = matchedUids.has(item.uid);
-        const shouldUnblur = isPremium || isMatched;
+        const shouldUnblur = canSeeLikes || isMatched;
 
-        if (!isPremium && index === 0 && likesCount > 0 && !isMatched) {
+        if (!canSeeLikes && index === 0 && likesCount > 0 && !isMatched) {
             return (
                 <TouchableOpacity
                     style={styles.likeCard}
@@ -123,9 +129,12 @@ const LikesScreen = () => {
                 </View>
 
                 {shouldUnblur && (
-                    <View style={styles.cardInfo}>
+                    <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.9)']}
+                        style={styles.cardInfo}
+                    >
                         <Text style={styles.nameLabel}>{item.firstName}, {item.age}</Text>
-                    </View>
+                    </LinearGradient>
                 )}
             </TouchableOpacity>
         );
@@ -218,45 +227,62 @@ const LikesScreen = () => {
                 </View>
             ) : (
                 <View style={{ flex: 1 }}>
-                    <FlatList
-                        data={topPicks}
-                        numColumns={2}
-                        keyExtractor={(item) => item.id}
-                        contentContainerStyle={styles.list}
-                        ListHeaderComponent={
-                            <View style={styles.upgradeBanner}>
-                                <Text style={styles.upgradeBannerText}>Upgrade to Spark Gold™ for more Top Picks!</Text>
-                            </View>
-                        }
-                        renderItem={({ item }) => (
-                            <View style={styles.likeCard}>
-                                <Image source={{ uri: item.photos[0] }} style={styles.image} />
-                                <View style={styles.overlay}>
-                                    <Text style={styles.name}>{item.firstName}, {item.age}</Text>
-                                    <Text style={styles.expiresText}>{item.expiresAt}</Text>
+                    {loadingPicks ? (
+                        <View style={styles.center}>
+                            <ActivityIndicator size="large" color={COLORS.primary} />
+                        </View>
+                    ) : (
+                        <FlatList
+                            data={topPicks}
+                            numColumns={2}
+                            keyExtractor={(item) => item.id || item.uid}
+                            contentContainerStyle={styles.list}
+                            ListHeaderComponent={
+                                <View style={styles.upgradeBanner}>
+                                    <Text style={styles.upgradeBannerText}>Upgrade to Spark Gold™ for more Top Picks!</Text>
                                 </View>
-                                {item.interest && (
-                                    <Text style={styles.interestLabel}>{item.interest}</Text>
-                                )}
-                                <TouchableOpacity
-                                    style={styles.superLikeShortcut}
-                                    onPress={() => openUpgrade('platinum')}
+                            }
+                            renderItem={({ item }) => (
+                                <TouchableOpacity 
+                                    style={styles.likeCard}
+                                    onPress={() => openUpgrade('gold')}
                                 >
-                                    <Ionicons name="star" size={16} color={COLORS.blue} />
+                                    <Image source={{ uri: (Array.isArray(item.photos) && item.photos[0]) || 'https://picsum.photos/400' }} style={styles.image} />
+                                    <LinearGradient
+                                        colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.9)']}
+                                        style={styles.overlay}
+                                    >
+                                        <Text style={styles.name}>{item.firstName}, {item.age}</Text>
+                                        <Text style={styles.expiresText}>{item.expiresAt || '24h left'}</Text>
+                                    </LinearGradient>
+                                    {item.interests && item.interests[0] && (
+                                        <Text style={styles.interestLabel}>{item.interests[0]}</Text>
+                                    )}
+                                    <View
+                                        style={styles.superLikeShortcut}
+                                    >
+                                        <Ionicons name="star" size={16} color={COLORS.blue} />
+                                    </View>
                                 </TouchableOpacity>
-                            </View>
-                        )}
-                        ListFooterComponent={
-                            <TouchableOpacity
-                                style={styles.unlockButton}
-                                onPress={() => openUpgrade('gold')}
-                            >
-                                <LinearGradient colors={['#D4AF37', '#FFD700']} style={styles.unlockGradient}>
-                                    <Text style={styles.unlockButtonText}>Unlock all Top Picks</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        }
-                    />
+                            )}
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer}>
+                                    <Ionicons name="star-outline" size={64} color="#333" />
+                                    <Text style={styles.emptyText}>No Top Picks available right now.</Text>
+                                </View>
+                            }
+                            ListFooterComponent={
+                                <TouchableOpacity
+                                    style={styles.unlockButton}
+                                    onPress={() => openUpgrade('gold')}
+                                >
+                                    <LinearGradient colors={['#D4AF37', '#FFD700']} style={styles.unlockGradient}>
+                                        <Text style={styles.unlockButtonText}>Unlock all Top Picks</Text>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            }
+                        />
+                    )}
                 </View>
             )}
 
@@ -374,7 +400,7 @@ const styles = StyleSheet.create({
     },
     cardBadge: {
         position: 'absolute',
-        bottom: 12,
+        top: 10,
         left: 10,
         flexDirection: 'row',
         alignItems: 'center',
@@ -400,8 +426,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: 60,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        height: 80,
         padding: 12,
         justifyContent: 'flex-end',
     },
@@ -500,8 +525,9 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
+        height: 80,
         padding: 12,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'flex-end',
     },
     name: {
         color: 'white',

@@ -83,6 +83,7 @@ const PaymentScreen = () => {
     };
 
     const activateSubscription = async (method) => {
+        console.log(`[Payment] Activating subscription for plan: ${plan?.name} (${plan?.id})`);
         const expiryDate = new Date();
         expiryDate.setMonth(expiryDate.getMonth() + 1); // 1 month validity
 

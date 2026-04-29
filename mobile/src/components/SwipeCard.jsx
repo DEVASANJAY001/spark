@@ -3,11 +3,22 @@ import { StyleSheet, View, Text, Image, Dimensions, TouchableOpacity, Platform }
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import { userService } from '../services/userService';
 
 const { width, height } = Dimensions.get('window');
 
-const SwipeCard = ({ profile }) => {
+const SwipeCard = ({ profile, currentUserLocation }) => {
     const [currentPhotoIndex, setCurrentPhotoIndex] = React.useState(0);
+
+    const distance = React.useMemo(() => {
+        if (!currentUserLocation || !profile?.location) return null;
+        return userService.calculateDistance(
+            currentUserLocation.latitude,
+            currentUserLocation.longitude,
+            profile.location.latitude,
+            profile.location.longitude
+        );
+    }, [currentUserLocation, profile?.location]);
 
     if (!profile) return null;
 
@@ -101,7 +112,9 @@ const SwipeCard = ({ profile }) => {
                 <View style={styles.detailsRow}>
                     <View style={styles.detailItem}>
                         <Ionicons name="pin" size={14} color="rgba(255,255,255,0.6)" />
-                        <Text style={styles.detailText}>1 mile away</Text>
+                        <Text style={styles.detailText}>
+                            {distance !== null ? `${distance} mile${distance === 1 ? '' : 's'} away` : 'Nearby'}
+                        </Text>
                     </View>
                 </View>
 

@@ -83,6 +83,14 @@ export const swipeService = {
 
             const deleteRealPromises = snapshot.docs.map(swipeDoc => deleteDoc(swipeDoc.ref));
             await Promise.all(deleteRealPromises);
+
+            // Also reset daily swipe count in Firestore
+            const userRef = doc(db, 'users', uid);
+            await updateDoc(userRef, {
+                dailySwipeCount: 0,
+                lastSwipeDate: new Date().toISOString().split('T')[0]
+            });
+
             return true;
         } catch (error) {
             console.error('Error resetting swipes:', error);
@@ -226,5 +234,72 @@ export const swipeService = {
             });
             callback(matchedUids);
         });
+    },
+
+    /**
+     * Get Top Picks for a user
+     */
+    getTopPicks: async (uid, interestedIn) => {
+        try {
+            // 1. Get already swiped users to exclude them
+            const swipesRef = collection(db, 'users', uid, 'swipes');
+            const swipesSnapshot = await getDocs(swipesRef);
+            const swipedUids = swipesSnapshot.docs.map(doc => doc.id);
+            swipedUids.push(uid);
+
+            // 2. Query for top profiles
+            const usersRef = collection(db, 'users');
+            let q;
+            
+            if (interestedIn === 'Everyone') {
+                q = query(usersRef, 
+                    where('isProfileComplete', '==', true),
+                    orderBy('profileCompletion', 'desc'),
+                    limit(20)
+                );
+            } else {
+                const targetGender = interestedIn === 'Women' ? 'Woman' : 'Man';
+                q = query(usersRef,
+                    where('isProfileComplete', '==', true),
+                    where('gender', '==', targetGender),
+                    orderBy('profileCompletion', 'desc'),
+                    limit(20)
+                );
+            }
+
+            const querySnapshot = await getDocs(q);
+            
+            // 3. Filter and Hydrate
+            const availableDocs = querySnapshot.docs.filter(doc => !swipedUids.includes(doc.id)).slice(0, 10);
+            
+            const results = await Promise.all(availableDocs.map(async (userDoc) => {
+                const firestoreData = userDoc.data();
+                try {
+                    const rtdbProfile = await userService.getProfile(userDoc.id);
+                    return { 
+                        id: userDoc.id, 
+                        uid: userDoc.id,
+                        ...firestoreData, 
+                        ...rtdbProfile,
+                        age: rtdbProfile?.age || calculateAge(rtdbProfile?.birthday) || 21,
+                        expiresAt: '24h left' // Placeholder for UI
+                    };
+                } catch (e) {
+                    return {
+                        id: userDoc.id,
+                        uid: userDoc.id,
+                        ...firestoreData,
+                        age: calculateAge(firestoreData.birthday) || 21,
+                        photos: firestoreData.photos || ['https://picsum.photos/400'],
+                        expiresAt: '24h left'
+                    };
+                }
+            }));
+
+            return results;
+        } catch (error) {
+            console.error('Error getting top picks:', error);
+            return [];
+        }
     }
 };
