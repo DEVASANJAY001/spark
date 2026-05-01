@@ -1,3 +1,6 @@
+import { onAuthStateChanged } from 'firebase/auth'
+import { auth } from './firebase'
+import { useState, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
@@ -12,8 +15,39 @@ import Verifications from './pages/Verifications'
 import Ads from './pages/Ads'
 import Companies from './pages/Companies'
 import Header from './components/Header'
+import Login from './pages/Login'
+import Signup from './pages/Signup'
 
 function App() {
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      setLoading(false)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  // Auth gate
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/signup" element={<Signup />} />
+        <Route path="*" element={<Login />} />
+      </Routes>
+    )
+  }
+
   return (
     <div className="flex min-h-screen bg-black overflow-hidden">
       <Sidebar />

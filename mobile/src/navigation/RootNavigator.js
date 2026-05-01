@@ -170,7 +170,7 @@ const RootNavigator = () => {
         return (
             <SplashScreen
                 onFinish={() => setSplashDone(true)}
-                autoFinishDelay={2200}
+                autoFinishDelay={1200}
             />
         );
     }

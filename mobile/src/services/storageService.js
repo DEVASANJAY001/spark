@@ -3,6 +3,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { ref as rtdbRef, set } from 'firebase/database';
 import { storage, rtdb } from '../firebase/config';
 import * as FileSystem from 'expo-file-system/legacy';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 export const storageService = {
     /**
@@ -11,8 +12,16 @@ export const storageService = {
      */
     uploadAvatar: async (uid, uri, index) => {
         try {
-            // 1. Convert to Base64 using expo-file-system (mobile native)
-            const rawBase64 = await FileSystem.readAsStringAsync(uri, {
+            // 0. Automatically compress and resize the image before any processing
+            const manipulatedImage = await manipulateAsync(
+                uri,
+                [{ resize: { width: 1000 } }], // Resize to standard mobile width
+                { compress: 0.7, format: SaveFormat.JPEG } // 70% quality compression
+            );
+            const compressedUri = manipulatedImage.uri;
+
+            // 1. Convert compressed image to Base64
+            const rawBase64 = await FileSystem.readAsStringAsync(compressedUri, {
                 encoding: 'base64',
             });
             const base64 = `data:image/jpeg;base64,${rawBase64}`;
@@ -23,7 +32,7 @@ export const storageService = {
 
             // 3. Primary: Firebase Storage (standard practice)
             try {
-                const response = await fetch(uri);
+                const response = await fetch(compressedUri);
                 const blob = await response.blob();
                 const photoRef = storageRef(storage, `avatars/${uid}/photo_${index}.jpg`);
                 await uploadBytes(photoRef, blob);

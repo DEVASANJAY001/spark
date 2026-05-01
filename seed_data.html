@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Spark Data Seeder</title>
+    <style>
+        body { font-family: sans-serif; background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #111; padding: 40px; border-radius: 24px; border: 1px solid #333; width: 400px; text-align: center; }
+        h1 { color: #fd267d; margin-bottom: 20px; }
+        button { background: #fd267d; color: #fff; border: none; padding: 15px 30px; border-radius: 12px; font-weight: bold; cursor: pointer; width: 100%; font-size: 16px; transition: opacity 0.2s; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        #log { margin-top: 20px; text-align: left; font-size: 12px; color: #888; max-height: 200px; overflow-y: auto; border-top: 1px solid #222; padding-top: 10px; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Spark Seeder</h1>
+        <p>This will re-create all missing collections and add default plans, categories, and ads.</p>
+        <button id="seedBtn">START SEEDING</button>
+        <div id="log"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBlkSW4F6mvLCGhGOP-ujCVZ1RUwF4FGEg",
+            authDomain: "gets-a8675.firebaseapp.com",
+            projectId: "gets-a8675",
+            storageBucket: "gets-a8675.firebasestorage.app",
+            messagingSenderId: "477160304299",
+            appId: "1:477160304299:web:5e7d802d870100f2fc91ee",
+            measurementId: "G-2865MVXY6W"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const log = (msg, type = '') => {
+            const div = document.createElement('div');
+            div.className = type;
+            div.innerText = msg;
+            const logDiv = document.getElementById('log');
+            logDiv.appendChild(div);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        };
+
+        document.getElementById('seedBtn').onclick = async (e) => {
+            const btn = e.target;
+            btn.disabled = true;
+            btn.innerText = "SEEDING...";
+
+            try {
+                log("🚀 Starting Seeding...");
+
+                // 1. SEED PLANS
+                const plans = [
+                    { id: 'silver', name: 'Spark Silver', price: 499, duration: '1 Month', features: ['See who likes you', 'Unlimited likes', '5 Super likes per week', 'No ads'], tier: 'silver' },
+                    { id: 'gold', name: 'Spark Gold', price: 999, duration: '1 Month', features: ['Everything in Silver', 'Top Picks daily', 'See who visited your profile', 'Priority likes'], tier: 'gold' },
+                    { id: 'platinum', name: 'Spark Platinum', price: 1999, duration: '1 Month', features: ['Everything in Gold', 'Message before matching', 'See likes you sent', 'Global passport'], tier: 'platinum' }
+                ];
+
+                for (const plan of plans) {
+                    await setDoc(doc(db, 'plans', plan.id), plan);
+                    log(`✅ Plan ${plan.name} seeded`, 'success');
+                }
+
+                // 2. SEED SAMPLE AD COMPANIES
+                const companies = [
+                    { id: 'spark_internal', name: 'Spark Media', industry: 'Social', contact: 'admin@spark.com', status: 'Active' }
+                ];
+                for (const comp of companies) {
+                    await setDoc(doc(db, 'ad_companies', comp.id), comp);
+                    log(`✅ Company ${comp.name} seeded`, 'success');
+                }
+
+                // 3. SEED SAMPLE ADS
+                const ads = [
+                    { id: 'premium_upsell', companyId: 'spark_internal', title: 'Go Platinum!', description: 'Unlock 10x more matches.', imageUrl: 'https://images.unsplash.com/photo-1512351735139-ce015767c7f9?q=80&w=1000', targetUrl: 'spark://subscriptions', type: 'banner', status: 'Active', totalImpressions: 0, totalEngagement: 0 }
+                ];
+                for (const ad of ads) {
+                    await setDoc(doc(db, 'app_ads', ad.id), ad);
+                    log(`✅ Ad ${ad.title} seeded`, 'success');
+                }
+
+                // 4. SEED SAMPLE COUPONS
+                const coupons = [
+                    { id: 'SPARK50', code: 'SPARK50', discountType: 'percentage', discountValue: 50, isActive: true }
+                ];
+                for (const coupon of coupons) {
+                    await setDoc(doc(db, 'coupons', coupon.id), coupon);
+                    log(`✅ Coupon ${coupon.code} seeded`, 'success');
+                }
+
+                log("✨ SEEDING COMPLETE!", "success");
+                btn.innerText = "FINISHED";
+            } catch (err) {
+                log("❌ Error: " + err.message, "error");
+                btn.disabled = false;
+                btn.innerText = "RETRY SEEDING";
+            }
+        };
+    </script>
+</body>
+</html>

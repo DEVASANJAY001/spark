@@ -21,22 +21,25 @@ const ChatScreen = ({ navigation }) => {
     const [search, setSearch] = useState('');
 
     useEffect(() => {
-        if (user) {
-            const unsubscribeNew = chatService.getNewMatches(user.uid, (list) => {
+        if (user && profile) {
+            const hasSeeLikes = userService.canUseFeature(profile, 'see_likes');
+            
+            const unsubscribeUnlocked = chatService.getUnlockedProfiles(user.uid, hasSeeLikes, (list) => {
                 setNewMatches(list);
             });
+
             const unsubscribeConv = chatService.getConversations(user.uid, (list) => {
                 setConversations(list);
                 setLoading(false);
             });
             return () => {
-                unsubscribeNew();
+                unsubscribeUnlocked();
                 unsubscribeConv();
             };
         }
-    }, [user]);
+    }, [user, profile?.premiumTier]);
 
-    const handleChatPress = (match) => {
+    const handleChatPress = async (match) => {
         // 1. Check if it's already an active conversation
         const isActive = conversations.some(c => c.id === match.id);
         if (isActive) {
@@ -56,6 +59,23 @@ const ChatScreen = ({ navigation }) => {
                 ]
             );
             return;
+        }
+
+        // 3. Ensure match exists (for subscription-unlocked likes)
+        if (match.isUnlockedLike) {
+            try {
+                const matchData = await chatService.getOrCreateMatch(user.uid, match.otherUser.uid || match.otherUser.id);
+                navigation.navigate('ChatDetail', { 
+                    matchId: matchData.id, 
+                    otherUser: match.otherUser, 
+                    createdAt: matchData.createdAt 
+                });
+                return;
+            } catch (err) {
+                console.error('Failed to create match for unlocked like:', err);
+                Alert.alert('Error', 'Failed to start chat. Please try again.');
+                return;
+            }
         }
 
         navigation.navigate('ChatDetail', { matchId: match.id, otherUser: match.otherUser, createdAt: match.createdAt });
@@ -169,7 +189,7 @@ const ChatScreen = ({ navigation }) => {
                 {filteredMatches.length > 0 && (
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <Text style={[styles.sectionTitle, { color: colors.text }]}>New Matches</Text>
+                            <Text style={[styles.sectionTitle, { color: colors.text }]}>Matches</Text>
                             <View style={[styles.countBadge, { backgroundColor: COLORS.primary }]}>
                                 <Text style={styles.countText}>{filteredMatches.length}</Text>
                             </View>
@@ -181,6 +201,10 @@ const ChatScreen = ({ navigation }) => {
                             keyExtractor={item => item.id}
                             renderItem={renderNewMatch}
                             contentContainerStyle={styles.newMatchesList}
+                            initialNumToRender={6}
+                            maxToRenderPerBatch={10}
+                            windowSize={3}
+                            removeClippedSubviews={Platform.OS === 'android'}
                         />
                     </View>
                 )}

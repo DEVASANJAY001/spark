@@ -35,7 +35,9 @@ const LikeCard = ({ item, matchedUids, currentUid, navigation, colors, hasSeeLik
             navigation.navigate('Subscriptions');
             return;
         }
-        if (isMatched || isSuperLike) {
+
+        // Subscribed users or Mutual matches or SuperLikes can chat
+        if (hasSeeLikes || isMatched || isSuperLike) {
             // Check chat limit before navigating
             const canStart = await chatService.canStartNewChat(currentUid, profile?.premiumTier);
             
@@ -52,8 +54,16 @@ const LikeCard = ({ item, matchedUids, currentUid, navigation, colors, hasSeeLik
                 return;
             }
 
-            const matchId = [currentUid, item.uid].sort().join('_');
-            navigation.navigate('Chat', { screen: 'ChatDetail', params: { matchId, otherUser: item, viaSuperLike: isSuperLike } });
+            // Get or create match (crucial for subscription-unlocked profiles)
+            const matchData = await chatService.getOrCreateMatch(currentUid, item.uid);
+            navigation.navigate('Chat', { 
+                screen: 'ChatDetail', 
+                params: { 
+                    matchId: matchData.id, 
+                    otherUser: item, 
+                    viaSuperLike: isSuperLike 
+                } 
+            });
         }
     };
 
@@ -185,7 +195,12 @@ const LikesScreen = ({ navigation }) => {
                             const result = await swipeService.handleSwipe(user.uid, targetUser.id || targetUser.uid, 'like');
                             if (result?.isMatch) {
                                 Alert.alert("It's a Match!", `You and ${targetUser.firstName} have liked each other.`);
-                                // Navigation to chat could also happen here
+                                // Navigate to chat automatically on mutual match
+                                const matchData = await chatService.getOrCreateMatch(user.uid, targetUser.id || targetUser.uid);
+                                navigation.navigate('Chat', { 
+                                    screen: 'ChatDetail', 
+                                    params: { matchId: matchData.id, otherUser: targetUser } 
+                                });
                             } else {
                                 Alert.alert("Like Sent!", `We'll let ${targetUser.firstName} know!`);
                             }
@@ -236,9 +251,25 @@ const LikesScreen = ({ navigation }) => {
                 <FlatList
                     data={likes}
                     numColumns={2}
-                    keyExtractor={(item) => item.id || item.uid}
-                    renderItem={({ item }) => <LikeCard item={item} matchedUids={matchedUids} currentUid={user?.uid} navigation={navigation} colors={colors} hasSeeLikes={hasSeeLikes} profile={profile} />}
-                    contentContainerStyle={styles.gridContent}
+                    keyExtractor={item => item.id}
+                    renderItem={({ item }) => (
+                        <LikeCard
+                            item={item}
+                            matchedUids={matchedUids}
+                            currentUid={user?.uid}
+                            navigation={navigation}
+                            colors={colors}
+                            hasSeeLikes={hasSeeLikes}
+                            profile={profile}
+                        />
+                    )}
+                    columnWrapperStyle={styles.row}
+                    contentContainerStyle={styles.likesList}
+                    showsVerticalScrollIndicator={false}
+                    initialNumToRender={6}
+                    maxToRenderPerBatch={10}
+                    windowSize={5}
+                    removeClippedSubviews={Platform.OS === 'android'}
                     ListHeaderComponent={
                         <View style={{ paddingHorizontal: 15, paddingTop: 10 }}>
                             <AdBanner placement="likes_top" style={{ height: 100 }} />
@@ -288,7 +319,11 @@ const LikesScreen = ({ navigation }) => {
                             numColumns={2}
                             keyExtractor={(item) => item.id || item.uid}
                             contentContainerStyle={styles.gridContent}
-                             renderItem={({ item }) => (
+                            initialNumToRender={4}
+                            maxToRenderPerBatch={6}
+                            windowSize={3}
+                            removeClippedSubviews={Platform.OS === 'android'}
+                            renderItem={({ item }) => (
                                 <TouchableOpacity 
                                     style={[styles.likeCard, { backgroundColor: colors.surface }]}
                                     activeOpacity={0.9}

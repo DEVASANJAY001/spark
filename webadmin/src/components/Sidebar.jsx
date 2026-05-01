@@ -11,8 +11,11 @@ import {
   ShieldAlert,
   ShieldCheck,
   Megaphone,
-  Building2
+  Building2,
+  LogOut
 } from 'lucide-react'
+import { auth } from '../firebase'
+import { signOut } from 'firebase/auth'
 
 const Sidebar = () => {
   const menuItems = [
@@ -51,16 +54,23 @@ const Sidebar = () => {
         ))}
       </nav>
 
-      <div className="p-6 border-t border-white/10">
+      <div className="p-6 border-t border-white/10 space-y-4">
         <div className="bg-white/5 rounded-2xl p-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
-            AD
+            {auth.currentUser?.email?.charAt(0).toUpperCase() || 'A'}
           </div>
           <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-bold truncate">Admin User</p>
-            <p className="text-xs text-gray-500 truncate">admin@spark.com</p>
+            <p className="text-sm font-bold truncate">Administrator</p>
+            <p className="text-[10px] text-gray-500 truncate font-mono">{auth.currentUser?.email}</p>
           </div>
         </div>
+        <button 
+          onClick={() => signOut(auth)}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-all"
+        >
+          <LogOut size={14} />
+          LOGOUT
+        </button>
       </div>
     </div>
   )

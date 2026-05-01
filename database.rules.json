@@ -1,14 +1,34 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null",
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('profile').child('role').val() == 'admin' || auth.token.email == 'admin@spark.com')"
+      }
+    },
     "typing": {
       "$matchId": {
+        ".read": "auth != null",
         "$uid": {
-          ".write": "auth != null && auth.uid == $uid",
-          ".read": "auth != null"
+          ".write": "auth != null && auth.uid == $uid"
         }
       }
+    },
+    "status": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "messages": {
+      "$matchId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "discovery": {
+      ".read": "auth != null",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('profile').child('role').val() == 'admin' || auth.token.email == 'admin@spark.com')"
     }
   }
 }

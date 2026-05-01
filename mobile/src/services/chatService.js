@@ -6,11 +6,19 @@ import { ref as rtdbRef, set, onValue } from 'firebase/database';
 import { rtdb } from '../firebase/config';
 import { notificationService } from './notificationService';
 
+// In-memory cache for hydrated profiles to improve performance
+const profileCache = new Map();
+
 export const chatService = {
     /**
      * Hydrate a profile with RTDB + Firestore fallback
      */
     _hydrateProfile: async (uid) => {
+        // Check cache first
+        if (profileCache.has(uid)) {
+            return profileCache.get(uid);
+        }
+
         let profile = null;
         try {
             profile = await userService.getProfile(uid);
@@ -28,19 +36,57 @@ export const chatService = {
                 console.warn('Firestore fallback also failed for', uid);
             }
         }
-        return profile || { firstName: 'Unknown', photos: ['https://picsum.photos/100'] };
+        
+        const result = profile || { firstName: 'Someone', photos: ['https://picsum.photos/100'] };
+        
+        // Cache the result
+        profileCache.set(uid, result);
+        
+        // Auto-clear cache after 5 minutes to keep data fresh
+        setTimeout(() => profileCache.delete(uid), 5 * 60 * 1000);
+
+        return result;
     },
 
     /**
      * Get new matches (horizontal scroll row)
      * hasMessages: false
      */
-    getNewMatches: (uid, callback) => {
-        const q = query(
+    getUnlockedProfiles: (uid, hasSeeLikes, callback) => {
+        // 1. New Matches Listener
+        const matchesQ = query(
             collection(db, 'matches'),
             where('users', 'array-contains', uid)
         );
-        return onSnapshot(q, async (snapshot) => {
+
+        let likesUnsubscribe = null;
+        let matchesList = [];
+        let likesList = [];
+
+        const triggerCallback = () => {
+            // Merge and de-duplicate (matches take precedence)
+            const matchedUids = new Set(matchesList.map(m => m.otherUser?.uid || m.otherUser?.id));
+            const uniqueLikes = likesList.filter(l => !matchedUids.has(l.uid));
+            
+            // Format likes as "match-like" objects for the UI
+            const formattedLikes = uniqueLikes.map(like => ({
+                id: `like_${like.uid}`,
+                otherUser: like,
+                isUnlockedLike: true,
+                createdAt: like.likedAt || serverTimestamp()
+            }));
+
+            const combined = [...matchesList, ...formattedLikes];
+            // Sort by createdAt desc
+            combined.sort((a, b) => {
+                const timeA = a.createdAt?.seconds || a.createdAt?.toMillis?.() || 0;
+                const timeB = b.createdAt?.seconds || b.createdAt?.toMillis?.() || 0;
+                return timeB - timeA;
+            });
+            callback(combined);
+        };
+
+        const matchesUnsubscribe = onSnapshot(matchesQ, async (snapshot) => {
             const hydrated = await Promise.all(snapshot.docs.map(async (matchDoc) => {
                 const matchData = matchDoc.data();
                 const otherUid = matchData.users.find(id => id !== uid);
@@ -48,14 +94,61 @@ export const chatService = {
                 return { id: matchDoc.id, ...matchData, otherUser: profile };
             }));
 
-            // Filter for new matches: must NOT have messages AND must have the newMatch flag
-            const matches = hydrated.filter(m => !m.hasMessages && !m.lastMessage && m.newMatch !== false);
-
-            // Sort by createdAt desc
-            matches.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-            callback(matches);
+            matchesList = hydrated.filter(m => !m.hasMessages && !m.lastMessage && m.newMatch !== false);
+            triggerCallback();
         });
+
+        if (hasSeeLikes) {
+            const likesRef = collection(db, 'users', uid, 'likes');
+            const likesQ = query(likesRef, orderBy('timestamp', 'desc'), limit(30));
+            
+            likesUnsubscribe = onSnapshot(likesQ, async (snapshot) => {
+                const hydratedLikes = await Promise.all(snapshot.docs.map(async (likeDoc) => {
+                    const likeData = likeDoc.data();
+                    const fromUid = likeData.fromUid || likeDoc.id;
+                    const profile = await chatService._hydrateProfile(fromUid);
+                    return {
+                        uid: fromUid,
+                        ...profile,
+                        likedAt: likeData.timestamp,
+                        swipeType: likeData.type
+                    };
+                }));
+                likesList = hydratedLikes;
+                triggerCallback();
+            });
+        }
+
+        return () => {
+            matchesUnsubscribe();
+            if (likesUnsubscribe) likesUnsubscribe();
+        };
+    },
+
+    /**
+     * Get or create a match document for two users
+     */
+    getOrCreateMatch: async (uid1, uid2) => {
+        const matchId = [uid1, uid2].sort().join('_');
+        const matchRef = doc(db, 'matches', matchId);
+        const matchSnap = await getDoc(matchRef);
+
+        if (matchSnap.exists()) {
+            return { id: matchSnap.id, ...matchSnap.data() };
+        }
+
+        const timestamp = serverTimestamp();
+        const newMatchData = {
+            users: [uid1, uid2],
+            createdAt: timestamp,
+            hasMessages: false,
+            newMatch: true,
+            lastMessage: null,
+            lastMessageAt: timestamp,
+        };
+
+        await setDoc(matchRef, newMatchData);
+        return { id: matchId, ...newMatchData };
     },
 
     /**

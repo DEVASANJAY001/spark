@@ -13,7 +13,10 @@ const firebaseConfig = {
     databaseURL: "https://gets-a8675-default-rtdb.firebaseio.com"
 };
 
+import { getDatabase } from "firebase/database";
+
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const rtdb = getDatabase(app);
 export default app;

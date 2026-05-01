@@ -5,6 +5,15 @@ import { deleteUser } from 'firebase/auth';
 import { db, storage, rtdb } from '../firebase/config';
 import { storageService } from './storageService';
 
+// Performance caches
+const planCache = new Map();
+const userProfileCache = new Map();
+
+const isBase64 = (str) => {
+    if (typeof str !== 'string') return false;
+    return str.startsWith('data:image') || str.length > 1000; // Heuristic for base64
+};
+
 export const userService = {
     /**
      * Create or update a user profile
@@ -62,6 +71,11 @@ export const userService = {
      * Get a user profile (Primarily from RTDB)
      */
     getProfile: async (uid) => {
+        // 0. Check cache first
+        if (userProfileCache.has(uid)) {
+            return userProfileCache.get(uid);
+        }
+
         try {
             const profileRef = rtdbRef(rtdb, `users/${uid}/profile`);
             const photosRef = rtdbRef(rtdb, `users/${uid}/photos`);
@@ -90,16 +104,29 @@ export const userService = {
 
                 // Dynamically fetch and sync premium features from the 'plans' collection
                 if (userData.premiumTier) {
-                    try {
-                        const planRef = doc(db, 'plans', userData.premiumTier.toLowerCase());
-                        const planSnap = await getDoc(planRef);
-                        if (planSnap.exists()) {
-                            userData.premiumFeatures = planSnap.data().features || [];
+                    const tierKey = userData.premiumTier.toLowerCase();
+                    
+                    // Check plan cache
+                    if (planCache.has(tierKey)) {
+                        userData.premiumFeatures = planCache.get(tierKey);
+                    } else {
+                        try {
+                            const planRef = doc(db, 'plans', tierKey);
+                            const planSnap = await getDoc(planRef);
+                            if (planSnap.exists()) {
+                                const features = planSnap.data().features || [];
+                                userData.premiumFeatures = features;
+                                planCache.set(tierKey, features);
+                            }
+                        } catch (err) {
+                            console.error('[UserService] Error syncing plan features:', err);
                         }
-                    } catch (err) {
-                        console.error('[UserService] Error syncing plan features:', err);
                     }
                 }
+
+                // Cache the successfully hydrated profile
+                userProfileCache.set(uid, userData);
+                setTimeout(() => userProfileCache.delete(uid), 3 * 60 * 1000); // 3m cache
 
                 return userData;
             }
@@ -107,7 +134,14 @@ export const userService = {
             // Fallback to Firestore if RTDB is empty
             const userRef = doc(db, 'users', uid);
             const docSnap = await getDoc(userRef);
-            return docSnap.exists() ? docSnap.data() : null;
+            const finalData = docSnap.exists() ? docSnap.data() : null;
+            
+            if (finalData) {
+                userProfileCache.set(uid, finalData);
+                setTimeout(() => userProfileCache.delete(uid), 3 * 60 * 1000); // 3m cache
+            }
+
+            return finalData;
         } catch (error) {
             console.error('Error in getProfile:', error);
             return null;
@@ -190,9 +224,15 @@ export const userService = {
             // 4. Update both completion and the actual photos array in Firestore
             const fullProfile = await userService.getProfile(uid);
             const completion = userService.calculateCompletion(fullProfile);
+            
+            // SECURITY: Never save base64 to Firestore (1MB limit)
+            const firestorePhotos = (fullProfile.photos || [])
+                .filter(p => p != null)
+                .map(p => isBase64(p) ? 'pending_upload' : p);
+
             const userRef = doc(db, 'users', uid);
             await updateDoc(userRef, {
-                photos: fullProfile.photos || [],
+                photos: firestorePhotos,
                 profileCompletion: completion,
                 updatedAt: serverTimestamp(),
             });
