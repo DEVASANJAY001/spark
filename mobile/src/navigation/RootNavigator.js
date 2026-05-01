@@ -18,6 +18,19 @@ import { presenceService } from '../services/presenceService';
 import { notificationService } from '../services/notificationService';
 import { userService } from '../services/userService';
 
+// Deep Screens
+import EditProfileScreen from '../screens/main/EditProfileScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import SupportTicketsScreen from '../screens/main/SupportTicketsScreen';
+import SupportTicketScreen from '../screens/main/SupportTicketScreen';
+import TicketChatScreen from '../screens/main/TicketChatScreen';
+import TransactionsScreen from '../screens/main/TransactionsScreen';
+import SafetyCenterScreen from '../screens/main/SafetyCenterScreen';
+import SafetyInfoScreen from '../screens/main/SafetyInfoScreen';
+import ReportConcernScreen from '../screens/main/ReportConcernScreen';
+import PhotoVerificationScreen from '../screens/main/PhotoVerificationScreen';
+import ChatDetailScreen from '../screens/main/ChatDetailScreen';
+
 const Stack = createNativeStackNavigator();
 
 const RootNavigator = () => {
@@ -195,6 +208,19 @@ const RootNavigator = () => {
                         <Stack.Screen name="Subscriptions" component={SubscriptionScreen} />
                         <Stack.Screen name="Payment" component={PaymentScreen} />
                         <Stack.Screen name="StaticContent" component={StaticContentScreen} />
+                        
+                        {/* Root Level Screens (No Tab Bar) */}
+                        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+                        <Stack.Screen name="Settings" component={SettingsScreen} />
+                        <Stack.Screen name="SupportTickets" component={SupportTicketsScreen} />
+                        <Stack.Screen name="SupportTicket" component={SupportTicketScreen} />
+                        <Stack.Screen name="TicketChat" component={TicketChatScreen} />
+                        <Stack.Screen name="Transactions" component={TransactionsScreen} />
+                        <Stack.Screen name="SafetyCenter" component={SafetyCenterScreen} />
+                        <Stack.Screen name="SafetyInfo" component={SafetyInfoScreen} />
+                        <Stack.Screen name="ReportConcern" component={ReportConcernScreen} />
+                        <Stack.Screen name="PhotoVerification" component={PhotoVerificationScreen} />
+                        <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
                     </>
                 )}
             </Stack.Navigator>

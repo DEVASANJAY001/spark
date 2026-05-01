@@ -1,16 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import ProfileScreen from '../screens/main/ProfileScreen';
-import EditProfileScreen from '../screens/main/EditProfileScreen';
-import SettingsScreen from '../screens/main/SettingsScreen';
-import SupportTicketScreen from '../screens/main/SupportTicketScreen';
-import SupportTicketsScreen from '../screens/main/SupportTicketsScreen';
-import TicketChatScreen from '../screens/main/TicketChatScreen';
-import TransactionsScreen from '../screens/main/TransactionsScreen';
-import SafetyCenterScreen from '../screens/main/SafetyCenterScreen';
-import SafetyInfoScreen from '../screens/main/SafetyInfoScreen';
-import ReportConcernScreen from '../screens/main/ReportConcernScreen';
-import PhotoVerificationScreen from '../screens/main/PhotoVerificationScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -18,16 +8,10 @@ const ProfileStack = () => {
     return (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
             <Stack.Screen name="ProfileMain" component={ProfileScreen} />
-            <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="SupportTickets" component={SupportTicketsScreen} />
-            <Stack.Screen name="SupportTicket" component={SupportTicketScreen} />
-            <Stack.Screen name="TicketChat" component={TicketChatScreen} />
-            <Stack.Screen name="Transactions" component={TransactionsScreen} />
-            <Stack.Screen name="SafetyCenter" component={SafetyCenterScreen} />
-            <Stack.Screen name="SafetyInfo" component={SafetyInfoScreen} />
-            <Stack.Screen name="ReportConcern" component={ReportConcernScreen} />
-            <Stack.Screen name="PhotoVerification" component={PhotoVerificationScreen} />
+            {/* 
+                NOTE: Deep screens (Settings, Safety, Support) have been moved 
+                to RootNavigator to hide the bottom tab bar automatically.
+            */}
         </Stack.Navigator>
     );
 };
