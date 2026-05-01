@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
-import ChipSelector from '../../components/ChipSelector';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
 
@@ -18,16 +16,14 @@ const LifestyleHabitsScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (profile?.lifestyle) {
-            setLifestyle(profile.lifestyle);
-        }
+        if (profile?.lifestyle) setLifestyle(profile.lifestyle);
     }, [profile]);
 
     const habits = [
-        { key: 'drinking', title: 'How often do you drink?', options: ['Socially', 'Never', 'Frequently', 'Sober'] },
-        { key: 'smoking', title: 'How often do you smoke?', options: ['Socially', 'Never', 'Frequently', 'Regularly'] },
-        { key: 'workout', title: 'Do you workout?', options: ['Every day', 'Often', 'Sometimes', 'Never'] },
-        { key: 'pets', title: 'Do you have any pets?', options: ['Dog', 'Cat', 'Reptile', 'None'] },
+        { key: 'drinking', title: 'Drinking', options: ['Socially', 'Never', 'Frequently', 'Sober'] },
+        { key: 'smoking', title: 'Smoking', options: ['Socially', 'Never', 'Frequently', 'Regularly'] },
+        { key: 'workout', title: 'Workout', options: ['Every day', 'Often', 'Sometimes', 'Never'] },
+        { key: 'pets', title: 'Pets', options: ['Dog', 'Cat', 'Reptile', 'None'] },
     ];
 
     const filledCount = Object.values(lifestyle).filter(val => val !== null).length;
@@ -46,95 +42,79 @@ const LifestyleHabitsScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={9 / 13} />
-
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.navigate('PersonalityTraits')} disabled={loading}>
-                    <Text style={styles.skipText}>Skip</Text>
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.content}>
-                <Text style={styles.title}>Let's talk lifestyle habits</Text>
-
+        <OnboardingBase
+            title="Lifestyle"
+            subtitle="Tell us a bit about your daily habits."
+            onNext={handleNext}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            progress={0.75}
+        >
+            <ScrollView showsVerticalScrollIndicator={false}>
                 {habits.map((habit) => (
                     <View key={habit.key} style={styles.section}>
                         <Text style={styles.sectionTitle}>{habit.title}</Text>
-                        <ChipSelector
-                            options={habit.options}
-                            selectedOptions={lifestyle[habit.key]}
-                            onSelect={(val) => setLifestyle({ ...lifestyle, [habit.key]: val })}
-                        />
+                        <View style={styles.chipGrid}>
+                            {habit.options.map(option => {
+                                const isSelected = lifestyle[habit.key] === option;
+                                return (
+                                    <TouchableOpacity
+                                        key={option}
+                                        style={[
+                                            styles.chip,
+                                            isSelected && styles.chipActive,
+                                            { backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.1)' : 'rgba(255,255,255,0.05)' }
+                                        ]}
+                                        onPress={() => setLifestyle({ ...lifestyle, [habit.key]: option })}
+                                    >
+                                        <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
+                                            {option}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
                     </View>
                 ))}
             </ScrollView>
-
-            <TouchableOpacity
-                style={[styles.nextButton, loading && styles.nextButtonDisabled]}
-                onPress={handleNext}
-                disabled={loading}
-            >
-                {loading ? (
-                    <ActivityIndicator color={COLORS.dark} />
-                ) : (
-                    <Text style={styles.nextButtonText}>Next {filledCount}/4</Text>
-                )}
-            </TouchableOpacity>
-        </SafeAreaView>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    header: {
-        padding: SPACING.m,
-        alignItems: 'flex-end',
-    },
-    skipText: {
-        color: COLORS.lightGrey,
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    content: {
-        paddingHorizontal: SPACING.m,
-        paddingBottom: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: SPACING.xl,
-    },
     section: {
-        marginBottom: SPACING.l,
+        marginBottom: 30,
     },
     sectionTitle: {
-        color: 'white',
         fontSize: 18,
         fontWeight: 'bold',
-        marginBottom: SPACING.s,
+        color: 'white',
+        marginBottom: 15,
+        marginLeft: 5,
     },
-    nextButton: {
-        backgroundColor: 'white',
-        margin: SPACING.m,
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
+    chipGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
     },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
+    chip: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: 'transparent',
     },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
+    chipActive: {
+        borderColor: COLORS.primary,
     },
+    chipText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.6)',
+    },
+    chipTextActive: {
+        color: 'white',
+    }
 });
 
 export default LifestyleHabitsScreen;

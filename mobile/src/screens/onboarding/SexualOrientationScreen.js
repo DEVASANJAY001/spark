@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
+import { Ionicons } from '@expo/vector-icons';
 
 const SexualOrientationScreen = ({ navigation }) => {
     const { user, profile } = useAuth();
@@ -13,12 +13,8 @@ const SexualOrientationScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (profile?.orientations) {
-            setOrientations(profile.orientations);
-        }
-        if (profile?.showOrientation !== undefined) {
-            setShowOrientation(profile.showOrientation);
-        }
+        if (profile?.orientations) setOrientations(profile.orientations);
+        if (profile?.showOrientation !== undefined) setShowOrientation(profile.showOrientation);
     }, [profile]);
 
     const options = [
@@ -54,158 +50,112 @@ const SexualOrientationScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={5 / 13} />
-
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.navigate('InterestedIn')} disabled={loading}>
-                    <Text style={styles.skipText}>Skip</Text>
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.content}>
-                <Text style={styles.title}>What's your sexual orientation?</Text>
-                <Text style={styles.helperText}>Select up to 3</Text>
-
+        <OnboardingBase
+            title="Your orientation?"
+            subtitle="Select up to 3 options to help us find better matches."
+            onNext={handleNext}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            disabled={orientations.length === 0}
+            progress={0.45}
+        >
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
                 <View style={styles.optionsContainer}>
-                    {options.map((option) => (
-                        <TouchableOpacity
-                            key={option.id}
-                            style={[
-                                styles.optionButton,
-                                orientations.includes(option.id) && styles.optionButtonActive
-                            ]}
-                            onPress={() => handleSelect(option.id)}
-                            disabled={loading}
-                        >
-                            <Text style={[
-                                styles.optionText,
-                                orientations.includes(option.id) && styles.optionTextActive
-                            ]}>
-                                {option.title}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
+                    {options.map((option) => {
+                        const isSelected = orientations.includes(option.id);
+                        return (
+                            <TouchableOpacity
+                                key={option.id}
+                                style={[
+                                    styles.optionButton,
+                                    isSelected && styles.optionButtonActive,
+                                    { backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.1)' : 'rgba(255,255,255,0.05)' }
+                                ]}
+                                onPress={() => handleSelect(option.id)}
+                            >
+                                <Text style={[
+                                    styles.optionText,
+                                    isSelected && styles.optionTextActive
+                                ]}>
+                                    {option.title}
+                                </Text>
+                                {isSelected && (
+                                    <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                                )}
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
-            </ScrollView>
 
-            <View style={styles.footer}>
                 <TouchableOpacity
                     style={styles.checkboxContainer}
                     onPress={() => setShowOrientation(!showOrientation)}
-                    disabled={loading}
                 >
-                    <View style={[styles.checkbox, showOrientation && styles.checkboxActive]} />
+                    <View style={[styles.checkbox, showOrientation && styles.checkboxActive]}>
+                        {showOrientation && <Ionicons name="checkmark" size={14} color="white" />}
+                    </View>
                     <Text style={styles.checkboxLabel}>Show my orientation on my profile</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.nextButton, (orientations.length === 0 || loading) && styles.nextButtonDisabled]}
-                    disabled={orientations.length === 0 || loading}
-                    onPress={handleNext}
-                >
-                    {loading ? (
-                        <ActivityIndicator color={COLORS.dark} />
-                    ) : (
-                        <Text style={styles.nextButtonText}>Next</Text>
-                    )}
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
+            </ScrollView>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
+    scroll: {
         flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    header: {
-        padding: SPACING.m,
-        alignItems: 'flex-end',
-    },
-    skipText: {
-        color: COLORS.lightGrey,
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    content: {
-        paddingHorizontal: SPACING.m,
-        paddingBottom: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: 10,
-    },
-    helperText: {
-        color: COLORS.lightGrey,
-        fontSize: 14,
-        marginBottom: SPACING.xl,
     },
     optionsContainer: {
-        marginBottom: SPACING.xl,
+        gap: 12,
+        marginTop: 10,
     },
     optionButton: {
-        borderWidth: 2,
-        borderColor: COLORS.grey,
-        borderRadius: 30,
-        paddingVertical: 15,
+        height: 55,
+        borderRadius: 15,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         paddingHorizontal: 20,
-        marginBottom: SPACING.s,
+        borderWidth: 1,
+        borderColor: 'transparent',
     },
     optionButtonActive: {
         borderColor: COLORS.primary,
     },
     optionText: {
-        color: COLORS.lightGrey,
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: '600',
+        color: 'rgba(255,255,255,0.7)',
     },
     optionTextActive: {
-        color: COLORS.primary,
-    },
-    footer: {
-        padding: SPACING.m,
+        color: 'white',
     },
     checkboxContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: SPACING.m,
+        marginTop: 25,
+        marginBottom: 20,
+        paddingHorizontal: 5,
     },
     checkbox: {
-        width: 20,
-        height: 20,
+        width: 22,
+        height: 22,
+        borderRadius: 6,
         borderWidth: 2,
-        borderColor: COLORS.grey,
-        borderRadius: 4,
-        marginRight: 10,
+        borderColor: 'rgba(255,255,255,0.3)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
     },
     checkboxActive: {
         backgroundColor: COLORS.primary,
         borderColor: COLORS.primary,
     },
     checkboxLabel: {
-        color: 'white',
+        color: 'rgba(255,255,255,0.6)',
         fontSize: 14,
-    },
-    nextButton: {
-        backgroundColor: 'white',
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
-    },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
-    },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+        fontWeight: '500',
+    }
 });
 
 export default SexualOrientationScreen;

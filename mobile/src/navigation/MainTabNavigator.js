@@ -11,6 +11,8 @@ import { COLORS } from '../constants/theme';
 import { swipeService } from '../services/swipeService';
 import useAuth from '../hooks/useAuth';
 
+import CustomTabBar from '../components/CustomTabBar';
+
 const Tab = createBottomTabNavigator();
 
 const MainTabNavigator = () => {
@@ -28,59 +30,48 @@ const MainTabNavigator = () => {
 
     return (
         <Tab.Navigator
-            screenOptions={({ route }) => ({
+            tabBar={props => <CustomTabBar {...props} />}
+            screenOptions={{
                 headerShown: false,
-                tabBarIcon: ({ focused, color, size }) => {
-                    let iconName;
-
-                    if (focused) {
-                        if (route.name === 'Swipe') iconName = 'flame';
-                        else if (route.name === 'Explore') iconName = 'search';
-                        else if (route.name === 'Likes') iconName = 'heart';
-                        else if (route.name === 'Chat') iconName = 'chatbubble-ellipses';
-                        else if (route.name === 'Profile') iconName = 'person';
-                    } else {
-                        if (route.name === 'Swipe') iconName = 'flame-outline';
-                        else if (route.name === 'Explore') iconName = 'search-outline';
-                        else if (route.name === 'Likes') iconName = 'heart-outline';
-                        else if (route.name === 'Chat') iconName = 'chatbubble-ellipses-outline';
-                        else if (route.name === 'Profile') iconName = 'person-outline';
-                    }
-
-                    return <Ionicons name={iconName} size={size} color={color} />;
-                },
-                tabBarActiveTintColor: COLORS.primary,
-                tabBarInactiveTintColor: '#bbb',
-                tabBarShowLabel: true,
-                tabBarLabelStyle: {
-                    fontSize: 10,
-                    fontWeight: '600',
-                    marginTop: -2,
-                },
-                tabBarStyle: {
-                    backgroundColor: 'rgba(0,0,0,0.9)',
-                    borderTopWidth: 0,
-                    elevation: 0,
-                    height: Platform.OS === 'ios' ? 88 : 70,
-                    paddingTop: 10,
-                    paddingBottom: Platform.OS === 'ios' ? 25 : 15,
-                },
-                tabBarBadge: route.name === 'Likes' && likesCount > 0 ? (likesCount > 99 ? '99+' : likesCount) : null,
-                tabBarBadgeStyle: {
-                    backgroundColor: '#FFD700',
-                    color: 'black',
-                    fontSize: 10,
-                    fontWeight: 'bold',
-                },
-            })}
+            }}
         >
             <Tab.Screen name="Swipe" component={SwipeScreen} />
             <Tab.Screen name="Explore" component={ExploreScreen} />
-            <Tab.Screen name="Likes" component={LikesScreen} />
-            <Tab.Screen name="Chat" component={ChatStack} />
+            <Tab.Screen 
+                name="Likes" 
+                component={LikesScreen} 
+                options={{ tabBarBadge: likesCount > 0 ? (likesCount > 99 ? '99+' : likesCount) : null }}
+            />
+            <Tab.Screen 
+                name="Chat" 
+                component={ChatStack} 
+                listeners={({ navigation }) => ({
+                    tabPress: (e) => {
+                        // Reset to top of stack when tab is pressed
+                        navigation.navigate('Chat', { screen: 'ChatList' });
+                    },
+                })}
+            />
             <Tab.Screen name="Profile" component={ProfileStack} />
         </Tab.Navigator>
     );
 };
+
+const styles = StyleSheet.create({
+    iconContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 44,
+        height: 32,
+    },
+    activeDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        marginTop: 4,
+        position: 'absolute',
+        bottom: -8,
+    }
+});
 
 export default MainTabNavigator;

@@ -7,7 +7,9 @@ import {
   History, 
   LifeBuoy,
   Bell,
-  Flame
+  Flame,
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react'
 
 const Sidebar = () => {
@@ -19,6 +21,8 @@ const Sidebar = () => {
     { name: 'Transactions', icon: History, path: '/transactions' },
     { name: 'Support', icon: LifeBuoy, path: '/support' },
     { name: 'Notifications', icon: Bell, path: '/notifications' },
+    { name: 'Safety', icon: ShieldAlert, path: '/safety' },
+    { name: 'Verifications', icon: ShieldCheck, path: '/verifications' },
   ]
 
   return (

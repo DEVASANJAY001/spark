@@ -1,43 +1,90 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, FlatList, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, FlatList, TouchableOpacity, Image, ActivityIndicator, Platform, Animated, Dimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING } from '../../constants/theme';
+import { COLORS, SPACING, LAYOUT } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import useAuth from '../../hooks/useAuth';
-import UpgradeModal from '../../components/UpgradeModal';
 import { swipeService } from '../../services/swipeService';
-import { ref, get } from 'firebase/database';
-import { rtdb } from '../../firebase/config';
-import { userService } from '../../services/userService';
 
-const LikesScreen = () => {
-    const { colors } = useTheme();
+const { width } = Dimensions.get('window');
+
+const LikeCard = ({ item, matchedUids, currentUid, navigation, colors }) => {
+    const isSuperLike = item.swipeType === 'superlike';
+    const shimmer = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (!isSuperLike) return;
+        Animated.loop(
+            Animated.timing(shimmer, { toValue: 1, duration: 2000, useNativeDriver: true })
+        ).start();
+    }, [isSuperLike]);
+
+    const shimmerTranslate = shimmer.interpolate({ inputRange: [0, 1], outputRange: [-150, 150] });
+    const isMatched = matchedUids.has(item.uid);
+
+    const handlePress = () => {
+        if (isMatched || isSuperLike) {
+            const matchId = [currentUid, item.uid].sort().join('_');
+            navigation.navigate('Chat', { screen: 'ChatDetail', params: { matchId, otherUser: item, viaSuperLike: isSuperLike } });
+        }
+    };
+
+    return (
+        <TouchableOpacity style={[styles.likeCard, { backgroundColor: colors.surface }]} onPress={handlePress} activeOpacity={0.9}>
+            <Image
+                source={{ uri: (Array.isArray(item.photos) && item.photos[0]) || 'https://picsum.photos/400' }}
+                style={styles.image}
+            />
+
+            {isSuperLike && (
+                <View style={styles.superLikeBadgeWrap}>
+                    <LinearGradient
+                        colors={['#1A73E8', '#1557B0']}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={styles.superLikeBadge}
+                    >
+                        <Animated.View style={[styles.shimmer, { transform: [{ translateX: shimmerTranslate }] }]} />
+                        <Ionicons name="star" size={12} color="white" />
+                        <Text style={styles.superLikeText}>SUPER LIKE</Text>
+                    </LinearGradient>
+                </View>
+            )}
+
+            <View style={styles.cardBadge}>
+                <View style={styles.activeDot} />
+                <Text style={styles.activeText}>ONLINE</Text>
+            </View>
+
+            <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.85)']}
+                style={styles.cardInfo}
+            >
+                <Text style={styles.nameLabel}>{item.firstName}, {item.age}</Text>
+                {(isMatched || isSuperLike) && (
+                    <View style={styles.chatHintRow}>
+                        <Ionicons name="chatbubble-ellipses" size={12} color={isSuperLike ? "#42A5F5" : "#00FF88"} />
+                        <Text style={[styles.chatHint, { color: isSuperLike ? "#42A5F5" : "#00FF88" }]}>
+                            {isSuperLike ? "Priority Chat" : "Matched!"}
+                        </Text>
+                    </View>
+                )}
+            </LinearGradient>
+        </TouchableOpacity>
+    );
+};
+
+const LikesScreen = ({ navigation }) => {
+    const { colors, isDark } = useTheme();
     const { user, profile } = useAuth();
     const [likes, setLikes] = useState([]);
     const [likesCount, setLikesCount] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [upgradeVisible, setUpgradeVisible] = useState(false);
-    const [activeTab, setActiveTab] = useState('Likes');
-    const [upgradeTier, setUpgradeTier] = useState('gold');
     const [matchedUids, setMatchedUids] = useState(new Set());
     const [topPicks, setTopPicks] = useState([]);
     const [loadingPicks, setLoadingPicks] = useState(false);
-
-    const openUpgrade = (tier) => {
-        setUpgradeTier(tier);
-        setUpgradeVisible(true);
-    };
-
-    const filters = [
-        { id: 'filter', icon: 'options-outline' },
-        { id: 'nearby', label: 'Nearby' },
-        { id: 'bio', label: 'Has a Bio' },
-        { id: 'verified', label: 'Photo Verified' },
-    ];
-
-
+    const [activeTab, setActiveTab] = useState('Likes');
 
     useEffect(() => {
         if (user && profile) {
@@ -46,20 +93,10 @@ const LikesScreen = () => {
                 setLikesCount(count);
                 setLoading(false);
             });
-
             const unsubscribeMatches = swipeService.getMatches(user.uid, (uids) => {
                 setMatchedUids(uids);
             });
-
-            // Fetch Top Picks
-            const fetchTopPicks = async () => {
-                setLoadingPicks(true);
-                const picks = await swipeService.getTopPicks(user.uid, profile.interestedIn || 'Everyone');
-                setTopPicks(picks);
-                setLoadingPicks(false);
-            };
             fetchTopPicks();
-
             return () => {
                 unsubscribeLikes();
                 unsubscribeMatches();
@@ -67,82 +104,53 @@ const LikesScreen = () => {
         }
     }, [user, profile?.interestedIn]);
 
-    const renderFilterChip = ({ item }) => (
-        <TouchableOpacity style={styles.filterChip}>
-            {item.icon ? (
-                <Ionicons name={item.icon} size={18} color="#666" />
-            ) : (
-                <Text style={styles.filterChipText}>{item.label}</Text>
-            )}
-        </TouchableOpacity>
-    );
-
-    const renderLikeCard = ({ item, index }) => {
-        const canSeeLikes = userService.canUseFeature(profile, 'see_likes');
-        const isMatched = matchedUids.has(item.uid);
-        const shouldUnblur = canSeeLikes || isMatched;
-
-        if (!canSeeLikes && index === 0 && likesCount > 0 && !isMatched) {
-            return (
-                <TouchableOpacity
-                    style={styles.likeCard}
-                    onPress={() => openUpgrade('gold')}
-                >
-                    <Image
-                        source={{ uri: (Array.isArray(item.photos) && item.photos[0]) || 'https://picsum.photos/400' }}
-                        style={styles.image}
-                        blurRadius={40}
-                    />
-                    <LinearGradient
-                        colors={['rgba(212, 175, 55, 0.4)', 'rgba(212, 175, 55, 0.8)']}
-                        style={styles.goldOverlay}
-                    >
-                        <View style={styles.countBadge}>
-                            <Text style={styles.countBadgeText}>{likesCount > 25 ? '25+' : likesCount}</Text>
-                        </View>
-                        <Text style={styles.likesLabel}>Likes</Text>
-                    </LinearGradient>
-                </TouchableOpacity>
-            );
+    const fetchTopPicks = async () => {
+        if (!user || !profile) return;
+        setLoadingPicks(true);
+        try {
+            const picks = await swipeService.getTopPicks(user.uid, profile.interestedIn || 'Everyone');
+            setTopPicks(picks);
+        } catch (error) {
+            console.error('Error fetching top picks:', error);
+        } finally {
+            setLoadingPicks(false);
         }
+    };
 
-        return (
-            <TouchableOpacity
-                style={styles.likeCard}
-                onPress={() => shouldUnblur ? console.log('Open Profile', item.uid) : openUpgrade('gold')}
-            >
-                <Image
-                    source={{ uri: (Array.isArray(item.photos) && item.photos[0]) || 'https://picsum.photos/400' }}
-                    style={styles.image}
-                    blurRadius={shouldUnblur ? 0 : 30}
-                />
-
-                {!shouldUnblur && (
-                    <View style={styles.lockOverlay}>
-                        <Ionicons name="lock-closed" size={24} color="white" />
-                    </View>
-                )}
-
-                <View style={styles.cardBadge}>
-                    <View style={styles.activeDot} />
-                    <Text style={styles.activeText}>Recently Active</Text>
-                </View>
-
-                {shouldUnblur && (
-                    <LinearGradient
-                        colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.9)']}
-                        style={styles.cardInfo}
-                    >
-                        <Text style={styles.nameLabel}>{item.firstName}, {item.age}</Text>
-                    </LinearGradient>
-                )}
-            </TouchableOpacity>
+    const handleLikeTopPick = async (targetUser) => {
+        if (!user) return;
+        
+        // Optimistic UI or simple confirmation
+        Alert.alert(
+            `Like ${targetUser.firstName}?`,
+            `Send a like to ${targetUser.firstName} and see if it's a match!`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Send Like',
+                    onPress: async () => {
+                        try {
+                            const result = await swipeService.handleSwipe(user.uid, targetUser.id || targetUser.uid, 'like');
+                            if (result?.isMatch) {
+                                Alert.alert("It's a Match!", `You and ${targetUser.firstName} have liked each other.`);
+                                // Navigation to chat could also happen here
+                            } else {
+                                Alert.alert("Like Sent!", `We'll let ${targetUser.firstName} know!`);
+                            }
+                            // Refresh picks to remove the liked one
+                            fetchTopPicks();
+                        } catch (error) {
+                            Alert.alert("Error", "Failed to send like. Please try again.");
+                        }
+                    }
+                }
+            ]
         );
     };
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
+            <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         );
@@ -150,81 +158,51 @@ const LikesScreen = () => {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-            <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-                <View style={[styles.topTabBar, { borderBottomColor: colors.border }]}>
+            {/* High-End Header */}
+            <View style={styles.header}>
+                <View style={[styles.topTabs, { backgroundColor: colors.surface }]}>
                     <TouchableOpacity
-                        style={[styles.tabItem, activeTab === 'Likes' && styles.activeTabItem, activeTab === 'Likes' && { borderBottomColor: colors.primary }]}
+                        style={[styles.tabItem, activeTab === 'Likes' && styles.activeTabItem]}
                         onPress={() => setActiveTab('Likes')}
                     >
-                        <Text style={[styles.tabText, { color: colors.textSecondary }, activeTab === 'Likes' && { color: colors.text, fontWeight: 'bold' }]}>
-                            {likesCount > 99 ? '99+' : likesCount} Likes
+                        <Text style={[styles.tabText, { color: activeTab === 'Likes' ? colors.text : colors.textSecondary }]}>
+                            {likesCount} LIKES
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.tabItem, activeTab === 'Top Picks' && styles.activeTabItem, activeTab === 'Top Picks' && { borderBottomColor: colors.primary }]}
+                        style={[styles.tabItem, activeTab === 'Top Picks' && styles.activeTabItem]}
                         onPress={() => setActiveTab('Top Picks')}
                     >
-                        <Text style={[styles.tabText, { color: colors.textSecondary }, activeTab === 'Top Picks' && { color: colors.text, fontWeight: 'bold' }]}>
-                            Top Picks
+                        <Text style={[styles.tabText, { color: activeTab === 'Top Picks' ? colors.text : colors.textSecondary }]}>
+                            TOP PICKS
                         </Text>
                     </TouchableOpacity>
-                </View>
-
-                <View style={styles.filterRow}>
-                    <FlatList
-                        data={filters}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        renderItem={renderFilterChip}
-                        keyExtractor={item => item.id}
-                        contentContainerStyle={styles.filterList}
-                    />
                 </View>
             </View>
 
             {activeTab === 'Likes' ? (
-                <View style={{ flex: 1 }}>
-                    <FlatList
-                        data={likes}
-                        numColumns={2}
-                        keyExtractor={(item) => item.id || item.uid}
-                        renderItem={renderLikeCard}
-                        contentContainerStyle={styles.list}
-                        ListHeaderComponent={
-                            !(profile?.hasPremium) ? (
-                                <TouchableOpacity style={styles.upgradeNotice} onPress={() => openUpgrade('gold')}>
-                                    <LinearGradient colors={['#D4AF37', '#FFD700']} style={styles.upgradeNoticeGradient}>
-                                        <Ionicons name="diamond" size={18} color="white" />
-                                        <Text style={styles.upgradeNoticeText}>
-                                            Upgrade to Spark Gold to see who already liked you
-                                        </Text>
-                                        <Ionicons name="chevron-forward" size={18} color="white" />
-                                    </LinearGradient>
-                                </TouchableOpacity>
-                            ) : null
-                        }
-                        ListEmptyComponent={
-                            <View style={styles.emptyContainer}>
-                                <Ionicons name="heart" size={64} color="#333" />
-                                <Text style={styles.emptyText}>No likes yet. Keep swiping!</Text>
+                <FlatList
+                    data={likes}
+                    numColumns={2}
+                    keyExtractor={(item) => item.id || item.uid}
+                    renderItem={({ item }) => <LikeCard item={item} matchedUids={matchedUids} currentUid={user?.uid} navigation={navigation} colors={colors} />}
+                    contentContainerStyle={styles.gridContent}
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <View style={[styles.emptyIconCircle, { backgroundColor: colors.surface }]}>
+                                <Ionicons name="heart-half-outline" size={60} color={colors.textSecondary} />
                             </View>
-                        }
-                    />
-
-                    {!(profile?.hasPremium) && (
-                        <TouchableOpacity
-                            style={styles.floatingCta}
-                            onPress={() => openUpgrade('gold')}
-                        >
-                            <LinearGradient
-                                colors={['#D4AF37', '#FFD700']}
-                                style={styles.ctaGradient}
+                            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Likes Yet</Text>
+                            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>People who like you will appear here.</Text>
+                            <TouchableOpacity 
+                                style={[styles.actionBtn, { backgroundColor: COLORS.primary }]}
+                                onPress={() => navigation.navigate('Swipe')}
                             >
-                                <Text style={styles.ctaText}>See who Likes you</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    )}
-                </View>
+                                <Text style={styles.actionBtnText}>Keep Swiping</Text>
+                            </TouchableOpacity>
+                        </View>
+                    }
+                />
             ) : (
                 <View style={{ flex: 1 }}>
                     {loadingPicks ? (
@@ -236,373 +214,164 @@ const LikesScreen = () => {
                             data={topPicks}
                             numColumns={2}
                             keyExtractor={(item) => item.id || item.uid}
-                            contentContainerStyle={styles.list}
-                            ListHeaderComponent={
-                                <View style={styles.upgradeBanner}>
-                                    <Text style={styles.upgradeBannerText}>Upgrade to Spark Gold™ for more Top Picks!</Text>
-                                </View>
-                            }
+                            contentContainerStyle={styles.gridContent}
                             renderItem={({ item }) => (
                                 <TouchableOpacity 
-                                    style={styles.likeCard}
-                                    onPress={() => openUpgrade('gold')}
+                                    style={[styles.likeCard, { backgroundColor: colors.surface }]}
+                                    activeOpacity={0.9}
+                                    onPress={() => handleLikeTopPick(item)}
                                 >
                                     <Image source={{ uri: (Array.isArray(item.photos) && item.photos[0]) || 'https://picsum.photos/400' }} style={styles.image} />
                                     <LinearGradient
-                                        colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.9)']}
-                                        style={styles.overlay}
+                                        colors={['transparent', 'rgba(0,0,0,0.85)']}
+                                        style={styles.cardInfo}
                                     >
-                                        <Text style={styles.name}>{item.firstName}, {item.age}</Text>
-                                        <Text style={styles.expiresText}>{item.expiresAt || '24h left'}</Text>
+                                        <Text style={styles.nameLabel}>{item.firstName}, {item.age}</Text>
+                                        <Text style={styles.pickReason}>{item.interests?.[0] || 'Top Match'}</Text>
                                     </LinearGradient>
-                                    {item.interests && item.interests[0] && (
-                                        <Text style={styles.interestLabel}>{item.interests[0]}</Text>
-                                    )}
-                                    <View
-                                        style={styles.superLikeShortcut}
-                                    >
-                                        <Ionicons name="star" size={16} color={COLORS.blue} />
+                                    <View style={styles.pickBadge}>
+                                        <Ionicons name="flash" size={12} color="white" />
+                                        <Text style={styles.pickBadgeText}>TOP PICK</Text>
                                     </View>
                                 </TouchableOpacity>
                             )}
                             ListEmptyComponent={
                                 <View style={styles.emptyContainer}>
-                                    <Ionicons name="star-outline" size={64} color="#333" />
-                                    <Text style={styles.emptyText}>No Top Picks available right now.</Text>
+                                    <View style={[styles.emptyIconCircle, { backgroundColor: colors.surface }]}>
+                                        <Ionicons name="star-outline" size={60} color={colors.textSecondary} />
+                                    </View>
+                                    <Text style={[styles.emptyTitle, { color: colors.text }]}>No Picks Available</Text>
+                                    <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Check back later for curated profiles.</Text>
                                 </View>
-                            }
-                            ListFooterComponent={
-                                <TouchableOpacity
-                                    style={styles.unlockButton}
-                                    onPress={() => openUpgrade('gold')}
-                                >
-                                    <LinearGradient colors={['#D4AF37', '#FFD700']} style={styles.unlockGradient}>
-                                        <Text style={styles.unlockButtonText}>Unlock all Top Picks</Text>
-                                    </LinearGradient>
-                                </TouchableOpacity>
                             }
                         />
                     )}
                 </View>
             )}
-
-            <UpgradeModal
-                visible={upgradeVisible}
-                onClose={() => setUpgradeVisible(false)}
-                tier={upgradeTier}
-            />
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#000',
-    },
-    header: {
-        backgroundColor: '#000',
-        zIndex: 10,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#000',
-    },
-    topTabBar: {
+    container: { flex: 1 },
+    content: { paddingHorizontal: 15, paddingBottom: LAYOUT.TAB_BAR_HEIGHT + 20 },
+    topTabs: {
         flexDirection: 'row',
-        height: 60,
-        borderBottomWidth: 1,
-        borderBottomColor: '#222',
-        paddingHorizontal: 20,
+        borderRadius: 16,
+        padding: 5,
     },
     tabItem: {
         flex: 1,
-        justifyContent: 'center',
+        paddingVertical: 12,
         alignItems: 'center',
+        borderRadius: 12,
     },
     activeTabItem: {
-        borderBottomWidth: 3,
-        borderBottomColor: COLORS.primary,
+        backgroundColor: 'rgba(255,255,255,0.1)',
     },
     tabText: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '900',
-        color: '#666',
-        textTransform: 'uppercase',
+        letterSpacing: 1,
     },
-    activeTabText: {
-        color: 'white',
-    },
-    filterRow: {
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#222',
-    },
-    filterList: {
+    gridContent: {
         paddingHorizontal: 15,
-    },
-    filterChip: {
-        paddingHorizontal: 15,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#333',
-        marginRight: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
-        minWidth: 46,
-        backgroundColor: '#111',
-    },
-    filterChipText: {
-        fontSize: 12,
-        fontWeight: 'bold',
-        color: '#ccc',
-    },
-    upgradeNotice: {
-        marginHorizontal: 5,
-        marginVertical: 15,
-        borderRadius: 12,
-        overflow: 'hidden',
-    },
-    upgradeNoticeGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 16,
-        paddingHorizontal: 20,
-    },
-    upgradeNoticeText: {
-        fontSize: 14,
-        fontWeight: '800',
-        color: 'white',
-        textAlign: 'center',
-        marginHorizontal: 10,
-    },
-    list: {
-        padding: 8,
-        paddingBottom: 120,
+        paddingBottom: LAYOUT.TAB_BAR_HEIGHT + 40,
     },
     likeCard: {
-        width: '47%',
-        aspectRatio: 0.75,
-        margin: '1.5%',
-        borderRadius: 15,
+        width: (width - 45) / 2,
+        aspectRatio: 0.72,
+        margin: 7.5,
+        borderRadius: 24,
         overflow: 'hidden',
-        backgroundColor: '#111',
         borderWidth: 1,
-        borderColor: '#222',
+        borderColor: 'rgba(255,255,255,0.05)',
     },
-    image: {
-        width: '100%',
-        height: '100%',
-    },
-    cardBadge: {
+    image: { width: '100%', height: '100%' },
+    superLikeBadgeWrap: {
         position: 'absolute',
-        top: 10,
-        left: 10,
+        top: 12,
+        left: 12,
+        zIndex: 10,
+        borderRadius: 10,
+        overflow: 'hidden',
+    },
+    superLikeBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        gap: 5,
         paddingHorizontal: 10,
         paddingVertical: 5,
-        borderRadius: 20,
     },
-    activeDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#00e882',
-        marginRight: 6,
+    shimmer: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: 60,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        transform: [{ skewX: '-30deg' }],
     },
-    activeText: {
-        color: 'white',
-        fontSize: 10,
-        fontWeight: 'bold',
+    superLikeText: { color: 'white', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+    cardBadge: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 10,
+        gap: 5,
     },
+    activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#00FF88' },
+    activeText: { color: 'white', fontSize: 10, fontWeight: '800' },
     cardInfo: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        height: 80,
-        padding: 12,
+        padding: 15,
         justifyContent: 'flex-end',
     },
-    nameLabel: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 18,
-    },
-    floatingCta: {
-        position: 'absolute',
-        bottom: 30,
-        alignSelf: 'center',
-        width: 240,
-        height: 54,
-        borderRadius: 27,
-        overflow: 'hidden',
-        ...Platform.select({
-            web: { boxShadow: '0px 8px 20px rgba(0,0,0,0.5)' },
-            default: { elevation: 12 }
-        })
-    },
-    ctaGradient: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    ctaText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-        letterSpacing: 0.5,
-    },
-    goldOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.2)',
-    },
-    countBadge: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        backgroundColor: '#D4AF37',
-        borderWidth: 3,
-        borderColor: '#FFD700',
-        justifyContent: 'center',
-        alignItems: 'center',
-        ...Platform.select({
-            web: {
-                boxShadow: '0px 4px 10px rgba(0,0,0,0.3)',
-            },
-            default: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 10,
-                elevation: 8,
-            }
-        })
-    },
-    countBadgeText: {
-        color: 'white',
-        fontSize: 20,
-        fontWeight: 'bold',
-    },
-    likesLabel: {
-        color: 'white',
-        fontSize: 15,
-        fontWeight: 'bold',
-        marginTop: 12,
-        textTransform: 'uppercase',
-        letterSpacing: 1.5,
-    },
-    lockOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.15)',
-    },
-    upgradeBanner: {
-        backgroundColor: '#1a1810',
-        padding: 18,
-        alignItems: 'center',
-        borderRadius: 12,
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: '#3a3210',
-    },
-    upgradeBannerText: {
-        color: '#D4AF37',
-        fontWeight: 'bold',
-        fontSize: 12,
-    },
-    overlay: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 80,
-        padding: 12,
-        justifyContent: 'flex-end',
-    },
-    name: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
-    expiresText: {
-        color: 'rgba(255,255,255,0.7)',
-        fontSize: 11,
-        marginTop: 4,
-    },
-    interestLabel: {
+    nameLabel: { color: 'white', fontWeight: '900', fontSize: 18, letterSpacing: -0.2 },
+    chatHintRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+    chatHint: { fontSize: 12, fontWeight: '700' },
+    pickReason: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600', marginTop: 2 },
+    pickBadge: {
         position: 'absolute',
         top: 12,
         left: 12,
-        color: '#D4AF37',
-        fontSize: 12,
-        fontWeight: 'bold',
-        backgroundColor: 'rgba(0,0,0,0.7)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.primary,
         paddingHorizontal: 8,
         paddingVertical: 4,
-        borderRadius: 6,
+        borderRadius: 8,
+        gap: 4,
     },
-    superLikeShortcut: {
-        position: 'absolute',
-        bottom: 12,
-        right: 12,
-        backgroundColor: 'white',
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-        ...Platform.select({
-            web: {
-                boxShadow: '0px 2px 4px rgba(0,0,0,0.2)',
-            },
-            default: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.2,
-                shadowRadius: 4,
-                elevation: 4,
-            }
-        })
-    },
-    unlockButton: {
-        marginVertical: 30,
-        marginHorizontal: 30,
-        height: 56,
-        borderRadius: 28,
-        overflow: 'hidden',
-    },
-    unlockGradient: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    unlockButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+    pickBadgeText: { color: 'white', fontSize: 10, fontWeight: '900' },
     emptyContainer: {
         flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 120,
+        paddingHorizontal: 40,
+    },
+    emptyIconCircle: {
+        width: 110,
+        height: 110,
+        borderRadius: 55,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingTop: 120,
+        marginBottom: 25,
     },
-    emptyText: {
-        marginTop: 24,
-        color: '#444',
-        fontSize: 16,
-        fontWeight: 'bold',
-    }
+    emptyTitle: { fontSize: 24, fontWeight: '900', marginBottom: 10 },
+    emptySubtitle: { fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: 30 },
+    actionBtn: { paddingHorizontal: 35, paddingVertical: 16, borderRadius: 20 },
+    actionBtnText: { color: 'white', fontSize: 16, fontWeight: '800' },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' }
 });
 
 export default LikesScreen;

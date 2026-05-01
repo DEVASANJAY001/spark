@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
 
@@ -12,9 +11,7 @@ const InterestedInScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (profile?.interestedIn) {
-            setInterestedIn(profile.interestedIn);
-        }
+        if (profile?.interestedIn) setInterestedIn(profile.interestedIn);
     }, [profile]);
 
     const handleNext = async () => {
@@ -30,99 +27,81 @@ const InterestedInScreen = ({ navigation }) => {
         }
     };
 
+    const options = [
+        { label: 'Women', value: 'Women' },
+        { label: 'Men', value: 'Men' },
+        { label: 'Everyone', value: 'Everyone' },
+    ];
+
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={6 / 13} />
-
-            <View style={styles.content}>
-                <Text style={styles.title}>Who do you want to see?</Text>
-
-                <View style={styles.optionsContainer}>
-                    {['Women', 'Men', 'Everyone'].map((option) => (
-                        <TouchableOpacity
-                            key={option}
-                            style={[styles.optionButton, interestedIn === option && styles.optionButtonActive]}
-                            onPress={() => setInterestedIn(option)}
-                            disabled={loading}
-                        >
-                            <Text style={[styles.optionText, interestedIn === option && styles.optionTextActive]}>
-                                {option}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
+        <OnboardingBase
+            title="Who do you want to see?"
+            subtitle="You can always change this later in settings."
+            onNext={handleNext}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            disabled={!interestedIn}
+            progress={0.5}
+        >
+            <View style={styles.optionsContainer}>
+                {options.map((option) => (
+                    <TouchableOpacity
+                        key={option.value}
+                        style={[
+                            styles.optionButton,
+                            interestedIn === option.value && styles.optionButtonActive,
+                            { backgroundColor: interestedIn === option.value ? 'rgba(14, 165, 233, 0.1)' : 'rgba(255,255,255,0.05)' }
+                        ]}
+                        onPress={() => setInterestedIn(option.value)}
+                    >
+                        <Text style={[
+                            styles.optionText,
+                            interestedIn === option.value && styles.optionTextActive
+                        ]}>
+                            {option.label}
+                        </Text>
+                        {interestedIn === option.value && (
+                            <View style={styles.radioActive} />
+                        )}
+                    </TouchableOpacity>
+                ))}
             </View>
-
-            <TouchableOpacity
-                style={[styles.nextButton, (!interestedIn || loading) && styles.nextButtonDisabled]}
-                disabled={!interestedIn || loading}
-                onPress={handleNext}
-            >
-                {loading ? (
-                    <ActivityIndicator color={COLORS.dark} />
-                ) : (
-                    <Text style={styles.nextButtonText}>Next</Text>
-                )}
-            </TouchableOpacity>
-        </SafeAreaView>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    content: {
-        flex: 1,
-        paddingHorizontal: SPACING.m,
-        paddingTop: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: SPACING.xl,
-    },
     optionsContainer: {
-        marginBottom: SPACING.xl,
+        gap: 15,
+        marginTop: 10,
     },
     optionButton: {
-        borderWidth: 2,
-        borderColor: COLORS.grey,
-        borderRadius: 30,
-        paddingVertical: 15,
-        paddingHorizontal: 20,
-        marginBottom: SPACING.m,
+        height: 65,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 25,
+        borderWidth: 1.5,
+        borderColor: 'transparent',
     },
     optionButtonActive: {
         borderColor: COLORS.primary,
     },
     optionText: {
-        color: COLORS.lightGrey,
         fontSize: 18,
         fontWeight: '600',
+        color: 'rgba(255,255,255,0.7)',
     },
     optionTextActive: {
-        color: COLORS.primary,
+        color: 'white',
     },
-    nextButton: {
-        backgroundColor: 'white',
-        margin: SPACING.m,
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
-    },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
-    },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+    radioActive: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: COLORS.primary,
+    }
 });
 
 export default InterestedInScreen;

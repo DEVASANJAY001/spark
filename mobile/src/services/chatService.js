@@ -1,4 +1,4 @@
-import { collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, limit, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, limit, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { userService } from './userService';
 import { encryptionService } from './encryptionService';
@@ -135,14 +135,26 @@ export const chatService = {
         const matchRef = doc(db, 'matches', matchId);
         const timestamp = serverTimestamp();
 
+        // 1. Ensure match document exists (Crucial for Super Like direct chat)
+        const matchSnap = await getDoc(matchRef);
+        if (!matchSnap.exists()) {
+            const uids = matchId.split('_');
+            await setDoc(matchRef, {
+                users: uids,
+                createdAt: timestamp,
+                hasMessages: true,
+                newMatch: false,
+                lastMessage: text, // Temporarily set plaintext, updated below
+                lastMessageAt: timestamp,
+            });
+        }
+
         let messageText = text;
         let isEncrypted = false;
+        let sharedKey = matchSnap.exists() ? matchSnap.data()?.sharedKey : null;
 
         try {
             // Try encryption (graceful degradation if crypto fails)
-            const matchSnap = await getDoc(matchRef);
-            let sharedKey = matchSnap.data()?.sharedKey;
-
             if (!sharedKey) {
                 sharedKey = encryptionService.generateKey();
                 await updateDoc(matchRef, { sharedKey });

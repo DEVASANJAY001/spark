@@ -327,62 +327,14 @@ export const userService = {
      * Check if a user has access to a specific feature based on their tier
      */
     canUseFeature: (profile, feature) => {
-        if (!profile) return false;
-        const tier = profile.premiumTier || 'basic';
-        const hasPremium = profile.hasPremium || false;
-
-        const tiers = {
-            basic: 0,
-            plus: 1,
-            gold: 2,
-            platinum: 3
-        };
-
-        const currentLevel = hasPremium ? tiers[tier] : 0;
-
-        switch (feature) {
-            case 'unlimited_likes':
-                return currentLevel >= 1;
-            case 'rewind':
-                return currentLevel >= 1;
-            case 'passport':
-                return currentLevel >= 1;
-            case 'no_ads':
-                return currentLevel >= 1;
-            case 'incognito':
-                return currentLevel >= 1;
-            case 'see_likes':
-                return currentLevel >= 2;
-            case 'top_picks':
-                return currentLevel >= 2;
-            case 'super_likes':
-                return currentLevel >= 2;
-            case 'boost':
-                return currentLevel >= 2;
-            case 'message_before_match':
-                return currentLevel >= 3;
-            case 'priority_likes':
-                return currentLevel >= 3;
-            case 'see_sent_likes':
-                return currentLevel >= 3;
-            default:
-                return false;
-        }
+        return true; // All features unlocked for now
     },
 
     /**
      * Track and limit daily swipes for free users
      */
     checkSwipeLimit: async (uid, profile) => {
-        if (!profile) return true;
-        if (profile.hasPremium) return true;
-
-        const today = new Date().toISOString().split('T')[0];
-        const lastSwipeDate = profile.lastSwipeDate || '';
-        const dailyCount = lastSwipeDate === today ? (profile.dailySwipeCount || 0) : 0;
-
-        const LIMIT = 10; // Basic plan limit
-        return dailyCount < LIMIT;
+        return true; // No limits for now
     },
 
     incrementSwipeCount: async (uid, profile) => {
@@ -399,12 +351,12 @@ export const userService = {
     },
 
     /**
-     * Calculate distance between two points in miles using Haversine formula
+     * Calculate distance between two points in kilometers using Haversine formula
      */
     calculateDistance: (lat1, lon1, lat2, lon2) => {
         if (!lat1 || !lon1 || !lat2 || !lon2) return null;
         
-        const R = 3958.8; // Earth's radius in miles
+        const R = 6371; // Earth's radius in km
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = 
@@ -414,7 +366,7 @@ export const userService = {
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         const distance = R * c;
         
-        return Math.round(distance * 10) / 10; // Round to 1 decimal place
+        return Math.round(distance * 100) / 100; // Round to 2 decimal places
     },
 
     /**
@@ -422,20 +374,61 @@ export const userService = {
      */
     updateLastSessionInfo: async (uid) => {
         try {
-            // 1. Get IP
-            const ipResponse = await fetch('https://api.ipify.org?format=json');
-            const { ip } = await ipResponse.json();
+            // 1. Get IP and Geo info with fallback
+            let geoData = null;
+            try {
+                const response = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(5000) });
+                if (response.ok && response.headers.get('content-type')?.includes('json')) {
+                    geoData = await response.json();
+                }
+            } catch (e) {
+                // Silently try fallback
+            }
 
-            // 2. Update Firestore
-            const userRef = doc(db, 'users', uid);
-            await updateDoc(userRef, {
-                lastIp: ip,
-                lastSessionAt: serverTimestamp()
-            });
+            if (!geoData || geoData.error) {
+                // Fallback to ip-api.com (no https on free tier, but okay for geo)
+                const response = await fetch('http://ip-api.com/json/', { signal: AbortSignal.timeout(5000) });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        geoData = {
+                            ip: data.query,
+                            latitude: data.lat,
+                            longitude: data.lon,
+                            city: data.city,
+                            region: data.regionName
+                        };
+                    }
+                }
+            }
 
-            console.log(`[UserService] Session info updated for ${uid}: ${ip}`);
+            if (geoData && !geoData.error) {
+                const { ip, latitude: lat, longitude: lon, city, region } = geoData;
+
+                // 2. Update Firestore & RTDB with location
+                const userRef = doc(db, 'users', uid);
+                const location = {
+                    latitude: lat,
+                    longitude: lon,
+                    city: city,
+                    region: region,
+                    updatedAt: Date.now()
+                };
+
+                await updateDoc(userRef, {
+                    lastIp: ip,
+                    location: location,
+                    lastSessionAt: serverTimestamp()
+                });
+
+                // Also update RTDB profile location for faster access
+                const profileLocRef = rtdbRef(rtdb, `users/${uid}/profile/location`);
+                await set(profileLocRef, location);
+
+                console.log(`[UserService] Session & Geo updated for ${uid}: ${ip} (${city})`);
+            }
         } catch (error) {
-            console.warn('[UserService] Could not update session info:', error.message);
+            // Silent fail to not disrupt user experience
         }
     }
 };

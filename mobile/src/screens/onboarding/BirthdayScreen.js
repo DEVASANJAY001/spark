@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, TextInput, Text } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
 
@@ -29,8 +28,13 @@ const BirthdayScreen = ({ navigation }) => {
         setLoading(true);
         try {
             const birthday = `${day}/${month}/${year}`;
-            // Simple age calculation
-            const age = new Date().getFullYear() - parseInt(year);
+            const [d, m, y] = [parseInt(day), parseInt(month), parseInt(year)];
+            const birthDate = new Date(y, m - 1, d);
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
+            
             await userService.saveProfile(user.uid, { birthday, age });
             navigation.navigate('Gender');
         } catch (error) {
@@ -41,127 +45,81 @@ const BirthdayScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={2 / 13} />
-
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.content}
-            >
-                <Text style={styles.title}>What's your birthday?</Text>
-
-                <View style={styles.inputRow}>
+        <OnboardingBase
+            title="When's your birthday?"
+            subtitle="Your age will be public. Choose wisely, you can only set this once."
+            onNext={handleNext}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            disabled={!isComplete}
+            progress={0.3}
+        >
+            <View style={styles.inputRow}>
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Day</Text>
                     <TextInput
                         style={styles.input}
                         placeholder="DD"
-                        placeholderTextColor={COLORS.lightGrey}
+                        placeholderTextColor="rgba(255,255,255,0.2)"
                         keyboardType="number-pad"
                         maxLength={2}
                         value={day}
                         onChangeText={setDay}
-                        editable={!loading}
                     />
-                    <Text style={styles.separator}>/</Text>
+                </View>
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Month</Text>
                     <TextInput
                         style={styles.input}
                         placeholder="MM"
-                        placeholderTextColor={COLORS.lightGrey}
+                        placeholderTextColor="rgba(255,255,255,0.2)"
                         keyboardType="number-pad"
                         maxLength={2}
                         value={month}
                         onChangeText={setMonth}
-                        editable={!loading}
                     />
-                    <Text style={styles.separator}>/</Text>
+                </View>
+                <View style={[styles.inputGroup, { flex: 1.5 }]}>
+                    <Text style={styles.inputLabel}>Year</Text>
                     <TextInput
-                        style={[styles.input, { width: 80 }]}
+                        style={styles.input}
                         placeholder="YYYY"
-                        placeholderTextColor={COLORS.lightGrey}
+                        placeholderTextColor="rgba(255,255,255,0.2)"
                         keyboardType="number-pad"
                         maxLength={4}
                         value={year}
                         onChangeText={setYear}
-                        editable={!loading}
                     />
                 </View>
-
-                <Text style={styles.helperText}>
-                    Your age will be public.
-                </Text>
-
-                <TouchableOpacity
-                    style={[styles.nextButton, (!isComplete || loading) && styles.nextButtonDisabled]}
-                    disabled={!isComplete || loading}
-                    onPress={handleNext}
-                >
-                    {loading ? (
-                        <ActivityIndicator color={COLORS.dark} />
-                    ) : (
-                        <Text style={styles.nextButtonText}>Next</Text>
-                    )}
-                </TouchableOpacity>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+            </View>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    content: {
-        flex: 1,
-        paddingHorizontal: SPACING.m,
-        paddingTop: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: SPACING.xl,
-    },
     inputRow: {
         flexDirection: 'row',
-        alignItems: 'center',
+        gap: 15,
+        marginTop: 20,
+    },
+    inputGroup: {
+        flex: 1,
+        borderBottomWidth: 2,
+        borderBottomColor: COLORS.primary,
+        paddingBottom: 5,
+    },
+    inputLabel: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.5)',
+        textTransform: 'uppercase',
+        fontWeight: 'bold',
+        marginBottom: 5,
     },
     input: {
-        borderBottomWidth: 2,
-        borderBottomColor: 'white',
+        fontSize: 24,
+        fontWeight: 'bold',
         color: 'white',
-        fontSize: 24,
-        paddingBottom: 5,
-        fontWeight: 'bold',
-        width: 50,
-        textAlign: 'center',
-    },
-    separator: {
-        color: COLORS.lightGrey,
-        fontSize: 24,
-        marginHorizontal: 10,
-    },
-    helperText: {
-        color: COLORS.lightGrey,
-        fontSize: 14,
-        marginTop: 15,
-    },
-    nextButton: {
-        backgroundColor: 'white',
-        marginTop: SPACING.xl,
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
-    },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
-    },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+    }
 });
 
 export default BirthdayScreen;

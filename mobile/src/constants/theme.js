@@ -22,3 +22,12 @@ export const SPACING = {
     l: 24,
     xl: 32,
 };
+
+export const LAYOUT = {
+    TAB_BAR_HEIGHT: 90,
+};
+
+export const BRAND_COLORS = {
+    pink: '#FF3366',
+    blue: '#0EA5E9',
+};

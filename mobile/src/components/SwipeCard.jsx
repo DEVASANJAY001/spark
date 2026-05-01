@@ -11,6 +11,7 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
     const [currentPhotoIndex, setCurrentPhotoIndex] = React.useState(0);
 
     const distance = React.useMemo(() => {
+        if (profile?.distance != null) return profile.distance;
         if (!currentUserLocation || !profile?.location) return null;
         return userService.calculateDistance(
             currentUserLocation.latitude,
@@ -18,7 +19,7 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
             profile.location.latitude,
             profile.location.longitude
         );
-    }, [currentUserLocation, profile?.location]);
+    }, [currentUserLocation, profile?.location, profile?.distance]);
 
     if (!profile) return null;
 
@@ -47,7 +48,7 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
                 style={styles.image}
             />
 
-            {/* Tap areas for photo navigation */}
+            {/* Photo Navigation Overlays */}
             <View style={styles.navigationOverlay}>
                 <TouchableOpacity 
                     style={styles.navTapArea} 
@@ -67,60 +68,71 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
                 />
             </View>
 
-            {/* Photo Indicators */}
+            {/* Photo Indicators - Modern Segmented Style */}
             {photos.length > 1 && (
-                <View style={styles.indicators}>
+                <View style={styles.indicatorContainer}>
                     {photos.map((_, i) => (
-                        <View
-                            key={i}
-                            style={[
-                                styles.indicator,
-                                { flex: 1 },
-                                i === currentPhotoIndex ? styles.activeIndicator : styles.inactiveIndicator
-                            ]}
-                        />
+                        <View key={i} style={styles.indicatorTrack}>
+                            <View
+                                style={[
+                                    styles.indicatorFill,
+                                    { width: i === currentPhotoIndex ? '100%' : '0%', opacity: i < currentPhotoIndex ? 0.4 : 1 }
+                                ]}
+                            />
+                        </View>
                     ))}
                 </View>
             )}
 
+            {/* High-End Shadow Gradient */}
             <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.9)']}
+                colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.95)']}
+                locations={[0, 0.4, 0.7, 1]}
                 style={styles.gradient}
             />
 
             <View style={styles.cardInfo}>
+                {/* Status Badges */}
                 <View style={styles.badgeRow}>
-                    <View style={styles.nearbyBadge}>
-                        <Ionicons name="location" size={12} color="white" />
-                        <Text style={styles.badgeText}>Nearby</Text>
+                    <View style={styles.glassBadge}>
+                        <Ionicons name="location-sharp" size={12} color="white" />
+                        <Text style={styles.badgeText}>
+                            {distance !== null ? `${parseFloat(distance).toFixed(1)} KM` : profile?.location?.city || 'Nearby'}
+                        </Text>
                     </View>
                     {profile.isRecentlyActive && (
-                        <View style={styles.activeBadge}>
+                        <View style={[styles.glassBadge, styles.activeBadge]}>
                             <View style={styles.activeDot} />
-                            <Text style={styles.badgeText}>Recently Active</Text>
+                            <Text style={styles.badgeText}>Online</Text>
                         </View>
                     )}
                 </View>
 
-                <View style={styles.nameRow}>
-                    <Text style={styles.name}>{profile.firstName}, {profile.age || '21'}</Text>
-                    {profile.isVerified && (
-                        <Ionicons name="checkmark-circle" size={22} color="#00e882" style={{ marginLeft: 6 }} />
+                {/* Primary Info */}
+                <View style={styles.mainInfo}>
+                    <View style={styles.nameRow}>
+                        <Text style={styles.name}>{profile.firstName}</Text>
+                        <Text style={styles.age}>, {(!profile.age || isNaN(profile.age)) ? '21' : profile.age}</Text>
+                        {profile.isVerified && (
+                            <View style={styles.verifiedBadge}>
+                                <Ionicons name="checkmark-sharp" size={14} color="white" />
+                            </View>
+                        )}
+                    </View>
+                    
+                    {profile.job && (
+                        <View style={styles.jobRow}>
+                            <Ionicons name="briefcase-outline" size={14} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.jobText}>{profile.job}</Text>
+                        </View>
+                    )}
+
+                    {profile.bio && (
+                        <Text style={styles.bio} numberOfLines={2}>
+                            {profile.bio}
+                        </Text>
                     )}
                 </View>
-
-                <View style={styles.detailsRow}>
-                    <View style={styles.detailItem}>
-                        <Ionicons name="pin" size={14} color="rgba(255,255,255,0.6)" />
-                        <Text style={styles.detailText}>
-                            {distance !== null ? `${distance} mile${distance === 1 ? '' : 's'} away` : 'Nearby'}
-                        </Text>
-                    </View>
-                </View>
-
-                {profile.bio && (
-                    <Text style={styles.bio} numberOfLines={2}>{profile.bio}</Text>
-                )}
             </View>
         </View>
     );
@@ -128,12 +140,11 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
 
 const styles = StyleSheet.create({
     card: {
-        width: width * 0.95,
-        height: height * 0.72,
-        borderRadius: 24,
+        width: '100%',
+        height: '100%',
+        borderRadius: 30,
         overflow: 'hidden',
-        backgroundColor: '#111',
-        alignSelf: 'center',
+        backgroundColor: '#000',
     },
     image: {
         width: '100%',
@@ -145,111 +156,126 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: '60%',
+        height: '65%',
     },
     navigationOverlay: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
-        bottom: 120,
+        bottom: 100,
         flexDirection: 'row',
+        zIndex: 5,
     },
     navTapArea: {
         flex: 1,
     },
-    indicators: {
+    indicatorContainer: {
         position: 'absolute',
-        top: 12,
-        left: 12,
-        right: 12,
+        top: 15,
+        left: 15,
+        right: 15,
         flexDirection: 'row',
+        gap: 6,
+        zIndex: 20,
+    },
+    indicatorTrack: {
+        flex: 1,
         height: 3,
-        zIndex: 10,
-    },
-    indicator: {
-        height: '100%',
-        marginHorizontal: 2,
+        backgroundColor: 'rgba(255,255,255,0.25)',
         borderRadius: 2,
+        overflow: 'hidden',
     },
-    activeIndicator: {
+    indicatorFill: {
+        height: '100%',
         backgroundColor: 'white',
-    },
-    inactiveIndicator: {
-        backgroundColor: 'rgba(255,255,255,0.3)',
     },
     cardInfo: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        padding: 24,
+        padding: 25,
+        zIndex: 10,
     },
     badgeRow: {
         flexDirection: 'row',
         gap: 8,
-        marginBottom: 12,
+        marginBottom: 15,
     },
-    nearbyBadge: {
+    glassBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.15)',
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: 20,
+        borderRadius: 12,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     activeBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(0, 255, 136, 0.15)',
+        borderColor: 'rgba(0, 255, 136, 0.3)',
     },
     activeDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#00e882',
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        backgroundColor: '#00FF88',
         marginRight: 6,
     },
     badgeText: {
         color: 'white',
-        fontSize: 11,
-        fontWeight: 'bold',
-        marginLeft: 4,
+        fontSize: 12,
+        fontWeight: '700',
+        letterSpacing: 0.2,
+    },
+    mainInfo: {
+        gap: 5,
     },
     nameRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 6,
     },
     name: {
-        fontSize: 32,
+        fontSize: 34,
         fontWeight: '900',
         color: 'white',
         letterSpacing: -0.5,
     },
-    detailsRow: {
-        marginBottom: 12,
+    age: {
+        fontSize: 28,
+        fontWeight: '400',
+        color: 'rgba(255,255,255,0.9)',
     },
-    detailItem: {
+    verifiedBadge: {
+        backgroundColor: COLORS.primary,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 10,
+        borderWidth: 1.5,
+        borderColor: 'white',
+    },
+    jobRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
+        marginTop: 2,
     },
-    detailText: {
+    jobText: {
+        color: 'rgba(255,255,255,0.85)',
         fontSize: 15,
-        color: 'rgba(255,255,255,0.8)',
+        fontWeight: '600',
     },
     bio: {
-        fontSize: 16,
+        fontSize: 15,
         color: 'rgba(255,255,255,0.7)',
         lineHeight: 22,
+        marginTop: 8,
+        fontWeight: '500',
     }
 });
 

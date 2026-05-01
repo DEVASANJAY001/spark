@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
-import ChipSelector from '../../components/ChipSelector';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
 
@@ -13,9 +11,7 @@ const InterestsScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (profile?.interests) {
-            setSelectedInterests(profile.interests);
-        }
+        if (profile?.interests) setSelectedInterests(profile.interests);
     }, [profile]);
 
     const categories = [
@@ -47,102 +43,80 @@ const InterestsScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={11 / 13} />
-
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.navigate('BioAndPrompts')} disabled={loading}>
-                    <Text style={styles.skipText}>Skip</Text>
-                </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.content}>
-                <Text style={styles.title}>What are you into?</Text>
-                <Text style={styles.helperText}>Add up to 10 interests to your profile.</Text>
-
+        <OnboardingBase
+            title="Interests"
+            subtitle="Pick up to 10 things you love. It helps us find common ground."
+            onNext={handleNext}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            disabled={selectedInterests.length === 0}
+            progress={0.85}
+        >
+            <ScrollView showsVerticalScrollIndicator={false}>
                 {categories.map((category) => (
                     <View key={category.title} style={styles.section}>
                         <Text style={styles.sectionTitle}>{category.title}</Text>
-                        <ChipSelector
-                            options={category.options}
-                            selectedOptions={selectedInterests}
-                            onSelect={handleSelect}
-                            multiSelect={true}
-                        />
+                        <View style={styles.chipGrid}>
+                            {category.options.map(option => {
+                                const isSelected = selectedInterests.includes(option);
+                                return (
+                                    <TouchableOpacity
+                                        key={option}
+                                        style={[
+                                            styles.chip,
+                                            isSelected && styles.chipActive,
+                                            { backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.1)' : 'rgba(255,255,255,0.05)' }
+                                        ]}
+                                        onPress={() => handleSelect(option)}
+                                    >
+                                        <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>
+                                            {option}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
                     </View>
                 ))}
             </ScrollView>
-
-            <TouchableOpacity
-                style={[styles.nextButton, (selectedInterests.length === 0 || loading) && styles.nextButtonDisabled]}
-                disabled={selectedInterests.length === 0 || loading}
-                onPress={handleNext}
-            >
-                {loading ? (
-                    <ActivityIndicator color={COLORS.dark} />
-                ) : (
-                    <Text style={styles.nextButtonText}>Next {selectedInterests.length}/10</Text>
-                )}
-            </TouchableOpacity>
-        </SafeAreaView>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    header: {
-        padding: SPACING.m,
-        alignItems: 'flex-end',
-    },
-    skipText: {
-        color: COLORS.lightGrey,
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    content: {
-        paddingHorizontal: SPACING.m,
-        paddingBottom: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: 5,
-    },
-    helperText: {
-        color: COLORS.lightGrey,
-        fontSize: 14,
-        marginBottom: SPACING.xl,
-    },
     section: {
-        marginBottom: SPACING.l,
+        marginBottom: 30,
     },
     sectionTitle: {
-        color: 'white',
         fontSize: 18,
         fontWeight: 'bold',
-        marginBottom: SPACING.s,
+        color: 'white',
+        marginBottom: 15,
+        marginLeft: 5,
     },
-    nextButton: {
-        backgroundColor: 'white',
-        margin: SPACING.m,
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
+    chipGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
     },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
+    chip: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: 'transparent',
     },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
+    chipActive: {
+        borderColor: COLORS.primary,
     },
+    chipText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.6)',
+    },
+    chipTextActive: {
+        color: 'white',
+    }
 });
 
 export default InterestsScreen;

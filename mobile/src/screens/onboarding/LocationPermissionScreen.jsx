@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform, Linking } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform, Linking, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,9 +12,21 @@ const LocationPermissionScreen = () => {
     const [loading, setLoading] = useState(false);
     const [checking, setChecking] = useState(true);
 
+    const appState = useRef(AppState.currentState);
+
     // Auto-check on mount — if location is already granted, skip this screen
     useEffect(() => {
         checkExistingPermission();
+
+        // Also check when returning from Settings
+        const subscription = AppState.addEventListener('change', nextAppState => {
+            if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+                checkExistingPermission();
+            }
+            appState.current = nextAppState;
+        });
+
+        return () => subscription.remove();
     }, []);
 
     const checkExistingPermission = async () => {

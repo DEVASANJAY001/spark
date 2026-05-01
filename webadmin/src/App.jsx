@@ -7,6 +7,8 @@ import Coupons from './pages/Coupons'
 import Transactions from './pages/Transactions'
 import Support from './pages/Support'
 import Notifications from './pages/Notifications'
+import Safety from './pages/Safety'
+import Verifications from './pages/Verifications'
 import Header from './components/Header'
 
 function App() {
@@ -24,6 +26,8 @@ function App() {
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/support" element={<Support />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/safety" element={<Safety />} />
+            <Route path="/verifications" element={<Verifications />} />
           </Routes>
         </main>
       </div>

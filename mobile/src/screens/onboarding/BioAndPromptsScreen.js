@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, Text, TextInput, ScrollView } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
 
@@ -17,31 +16,12 @@ const BioAndPromptsScreen = ({ navigation }) => {
         if (profile?.prompt) setPrompt(profile.prompt);
     }, [profile]);
 
-    // Auto-save Bio
-    useEffect(() => {
-        if (!user || bio === profile?.bio) return;
-        const timer = setTimeout(() => {
-            userService.updateProfileField(user.uid, 'bio', bio);
-        }, 1000);
-        return () => clearTimeout(timer);
-    }, [bio, user]);
-
-    // Auto-save Prompt
-    useEffect(() => {
-        if (!user || prompt === profile?.prompt) return;
-        const timer = setTimeout(() => {
-            userService.updateProfileField(user.uid, 'prompt', prompt);
-        }, 1000);
-        return () => clearTimeout(timer);
-    }, [prompt, user]);
-
     const handleFinish = async () => {
         if (!user) return;
         setLoading(true);
         try {
             await userService.saveProfile(user.uid, { bio, prompt });
             await userService.completeProfile(user.uid);
-            // useAuth listener will detect isProfileComplete change and navigate to Main
         } catch (error) {
             console.error(error);
         } finally {
@@ -50,126 +30,90 @@ const BioAndPromptsScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={13 / 13} />
-
-            <ScrollView contentContainerStyle={styles.content}>
-                <Text style={styles.title}>About me</Text>
-
+        <OnboardingBase
+            title="Bio & Prompts"
+            subtitle="The last step! Tell us about yourself and answer a quick prompt."
+            onNext={handleFinish}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            progress={0.95}
+            nextLabel="FINISH"
+        >
+            <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>BIO</Text>
+                    <Text style={styles.label}>BIO</Text>
                     <TextInput
                         style={styles.bioInput}
-                        placeholder="Write a little bit about yourself..."
-                        placeholderTextColor={COLORS.lightGrey}
+                        placeholder="Share something interesting..."
+                        placeholderTextColor="rgba(255,255,255,0.2)"
                         multiline
-                        numberOfLines={4}
                         value={bio}
                         onChangeText={setBio}
-                        editable={!loading}
                     />
                 </View>
 
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>PROFILE PROMPT</Text>
-                    <View style={styles.promptButton}>
-                        <Text style={styles.promptText}>I'm the type of person who...</Text>
+                    <Text style={styles.label}>PROMPT</Text>
+                    <View style={styles.promptCard}>
+                        <Text style={styles.promptTitle}>I'm the type of person who...</Text>
                         <TextInput
                             style={styles.promptInput}
                             placeholder="Your answer here"
-                            placeholderTextColor={COLORS.lightGrey}
+                            placeholderTextColor="rgba(255,255,255,0.2)"
                             value={prompt}
                             onChangeText={setPrompt}
-                            editable={!loading}
                         />
                     </View>
                 </View>
             </ScrollView>
-
-            <TouchableOpacity
-                style={[styles.nextButton, loading && styles.nextButtonDisabled]}
-                onPress={handleFinish}
-                disabled={loading}
-            >
-                {loading ? (
-                    <ActivityIndicator color={COLORS.dark} />
-                ) : (
-                    <Text style={styles.nextButtonText}>FINISH</Text>
-                )}
-            </TouchableOpacity>
-        </SafeAreaView>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    content: {
-        paddingHorizontal: SPACING.m,
-        paddingBottom: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginTop: SPACING.l,
-        marginBottom: SPACING.xl,
-    },
     section: {
-        marginBottom: SPACING.xl,
+        marginBottom: 30,
     },
-    sectionTitle: {
-        color: 'white',
-        fontSize: 14,
-        fontWeight: 'bold',
-        marginBottom: 10,
+    label: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1.5,
+        marginBottom: 12,
+        marginLeft: 5,
     },
     bioInput: {
-        backgroundColor: COLORS.grey,
-        borderRadius: 10,
-        padding: 15,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 20,
+        padding: 20,
         color: 'white',
         fontSize: 16,
+        height: 150,
         textAlignVertical: 'top',
-        height: 120,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
-    promptButton: {
-        backgroundColor: COLORS.grey,
-        borderRadius: 10,
-        padding: 15,
+    promptCard: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 20,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
-    promptText: {
-        color: COLORS.primary,
-        fontSize: 16,
+    promptTitle: {
+        fontSize: 14,
         fontWeight: 'bold',
+        color: COLORS.primary,
         marginBottom: 10,
     },
     promptInput: {
-        color: 'white',
         fontSize: 18,
+        color: 'white',
+        fontWeight: '600',
+        paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: COLORS.lightGrey,
-        paddingBottom: 5,
-    },
-    nextButton: {
-        backgroundColor: 'white',
-        margin: SPACING.m,
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
-    },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
-    },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+        borderBottomColor: 'rgba(255,255,255,0.1)',
+    }
 });
 
 export default BioAndPromptsScreen;

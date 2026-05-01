@@ -8,6 +8,10 @@ import SupportTicketScreen from '../screens/main/SupportTicketScreen';
 import SupportTicketsScreen from '../screens/main/SupportTicketsScreen';
 import TicketChatScreen from '../screens/main/TicketChatScreen';
 import TransactionsScreen from '../screens/main/TransactionsScreen';
+import SafetyCenterScreen from '../screens/main/SafetyCenterScreen';
+import SafetyInfoScreen from '../screens/main/SafetyInfoScreen';
+import ReportConcernScreen from '../screens/main/ReportConcernScreen';
+import PhotoVerificationScreen from '../screens/main/PhotoVerificationScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -22,6 +26,10 @@ const ProfileStack = () => {
             <Stack.Screen name="SupportTicket" component={SupportTicketScreen} />
             <Stack.Screen name="TicketChat" component={TicketChatScreen} />
             <Stack.Screen name="Transactions" component={TransactionsScreen} />
+            <Stack.Screen name="SafetyCenter" component={SafetyCenterScreen} />
+            <Stack.Screen name="SafetyInfo" component={SafetyInfoScreen} />
+            <Stack.Screen name="ReportConcern" component={ReportConcernScreen} />
+            <Stack.Screen name="PhotoVerification" component={PhotoVerificationScreen} />
         </Stack.Navigator>
     );
 };

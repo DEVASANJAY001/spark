@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Alert, Linking } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useState, useEffect, useRef } from 'react';
+import { Alert, Linking, AppState } from 'react-native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 import AuthStack from './AuthStack';
@@ -8,8 +8,7 @@ import OnboardingStack from './OnboardingStack';
 import MainTabNavigator from './MainTabNavigator';
 import SplashScreen from '../components/SplashScreen';
 import LocationGateScreen from '../screens/onboarding/LocationGateScreen';
-import SubscriptionScreen from '../screens/main/SubscriptionScreen';
-import PaymentScreen from '../screens/main/PaymentScreen';
+import UserProfileScreen from '../screens/main/UserProfileScreen';
 import useAuth from '../hooks/useAuth';
 import { presenceService } from '../services/presenceService';
 import { notificationService } from '../services/notificationService';
@@ -21,9 +20,19 @@ const RootNavigator = () => {
     const [splashDone, setSplashDone] = useState(false);
     const [locationGranted, setLocationGranted] = useState(null); // null = checking
 
+    const appState = useRef(AppState.currentState);
+
     // Check location permission on app start
     useEffect(() => {
         checkLocation();
+        // Re-check when user returns from Settings
+        const subscription = AppState.addEventListener('change', nextAppState => {
+            if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+                checkLocation();
+            }
+            appState.current = nextAppState;
+        });
+        return () => subscription.remove();
     }, []);
 
     // Presence & Notifications
@@ -76,29 +85,38 @@ const RootNavigator = () => {
 
     const requestLocation = async () => {
         try {
+            // 1. Try to enable location services automatically (System Dialog)
+            if (Platform.OS === 'android') {
+                try {
+                    await Location.enableNetworkProviderAsync();
+                } catch (e) {
+                    console.log('Network provider enable failed or cancelled');
+                }
+            }
+
+            // 2. Check if services are now enabled
             const servicesEnabled = await Location.hasServicesEnabledAsync();
             if (!servicesEnabled) {
                 Alert.alert(
-                    'Location Services Off',
-                    'Please turn on Location Services in your phone Settings, then come back.',
+                    'Location Services Required',
+                    'Please enable location services in your device settings to continue.',
                     [
                         { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                        { text: 'Try Again', onPress: checkLocation },
+                        { text: 'Cancel', style: 'cancel' }
                     ]
                 );
                 return;
             }
+
+            // 3. Request Permission
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status === 'granted') {
                 setLocationGranted(true);
             } else {
                 Alert.alert(
-                    'Location Permission Denied',
-                    'Spark needs your location to show nearby people. Please allow location access in your phone Settings.',
-                    [
-                        { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                        { text: 'Try Again', onPress: checkLocation },
-                    ]
+                    'Permission Denied',
+                    'Spark needs your location to find nearby matches.',
+                    [{ text: 'Open Settings', onPress: () => Linking.openSettings() }]
                 );
             }
         } catch (e) {
@@ -123,7 +141,7 @@ const RootNavigator = () => {
     }
 
     return (
-        <NavigationContainer>
+        <NavigationContainer theme={DarkTheme}>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
                 {!user ? (
                     <Stack.Screen name="Auth" component={AuthStack} />
@@ -132,8 +150,7 @@ const RootNavigator = () => {
                 ) : (
                     <>
                         <Stack.Screen name="Main" component={MainTabNavigator} />
-                        <Stack.Screen name="Subscription" component={SubscriptionScreen} />
-                        <Stack.Screen name="Payment" component={PaymentScreen} />
+                        <Stack.Screen name="UserProfile" component={UserProfileScreen} />
                     </>
                 )}
             </Stack.Navigator>

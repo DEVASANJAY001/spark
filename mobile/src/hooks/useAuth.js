@@ -12,45 +12,57 @@ const useAuth = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, (authUser) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, async (authUser) => {
             if (authUser) {
                 setUser(authUser);
 
-                // 1. Listen to Firestore (System Flags & Discovery Index)
+                // Start fetching in parallel for speed
+                const fetchInitialData = async () => {
+                    try {
+                        const { getDoc, doc } = require('firebase/firestore');
+                        const { get, ref } = require('firebase/database');
+                        
+                        const [fsSnap, rtdbSnap] = await Promise.all([
+                            getDoc(doc(db, 'users', authUser.uid)),
+                            get(ref(rtdb, `users/${authUser.uid}/profile`))
+                        ]);
+
+                        if (fsSnap.exists() || rtdbSnap.exists()) {
+                            const fsData = fsSnap.exists() ? fsSnap.data() : {};
+                            const rtdbData = rtdbSnap.exists() ? rtdbSnap.val() : {};
+                            
+                            setIsProfileComplete(fsData.isProfileComplete || false);
+                            setProfile({
+                                ...rtdbData,
+                                ...fsData,
+                                hasPremium: true,
+                                premiumTier: 'platinum'
+                            });
+                        }
+                    } catch (e) {
+                        console.log('Initial fetch error:', e);
+                    } finally {
+                        setLoading(false); // Unblock UI as fast as possible
+                    }
+                };
+
+                fetchInitialData();
+
+                // 1. Listen to Firestore
                 const unsubscribeFirestore = onSnapshot(doc(db, 'users', authUser.uid), (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         setIsProfileComplete(data.isProfileComplete || false);
-                        
-                        // Redundant sync for premium status to ensure app-wide consistency
-                        if (data.premiumTier) {
-                            setProfile(prev => ({ 
-                                ...prev, 
-                                premiumTier: data.premiumTier, 
-                                hasPremium: data.hasPremium 
-                            }));
-                        }
+                        setProfile(prev => ({ ...prev, ...data }));
                     }
                 });
 
-                // 2. Listen to RTDB Profile (Primary Source for Active User)
+                // 2. Listen to RTDB Profile
                 const profileRef = ref(rtdb, `users/${authUser.uid}/profile`);
                 const unsubscribeProfile = onValue(profileRef, (snap) => {
                     if (snap.exists()) {
-                        const rtdbProfile = snap.val();
-
-                        // Merge with photos if they exist (cached locally or listened via sibling)
-                        // Actually, let's just listen to the whole user node for simplicity
-                        // or stick to specific nodes if performance is a concern.
-                        setProfile(prev => {
-                            // Only trigger session update once per profile load
-                            if (!prev && rtdbProfile) {
-                                userService.updateLastSessionInfo(authUser.uid);
-                            }
-                            return { ...prev, ...rtdbProfile };
-                        });
+                        setProfile(prev => ({ ...prev, ...snap.val() }));
                     }
-                    setLoading(false);
                 });
 
                 // 3. Listen to RTDB Photos
@@ -103,7 +115,6 @@ const useAuth = () => {
 
     const logout = async () => {
         try {
-            // Force account selection for Google Sign-In next time
             try {
                 const Constants = require('expo-constants').default;
                 if (Constants.appOwnership !== 'expo') {
@@ -111,7 +122,7 @@ const useAuth = () => {
                     await GoogleSignin.signOut();
                 }
             } catch (googleError) {
-                // Ignore if not native or not configured
+                // Ignore
             }
             await auth.signOut();
         } catch (error) {

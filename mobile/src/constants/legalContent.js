@@ -17,7 +17,7 @@ export const LEGAL_CONTENT = {
     },
     safety_center: {
         title: 'Safety Center',
-        content: `The Spark Safety Center provides tools and resources to help you stay in control of your dating experience.\n\nFrom blocking and reporting to educational resources, we're here to support you every step of the way.`
+        content: `The Spark Safety Center provides tools and resources to help you stay in control of your social experience.\n\nFrom blocking and reporting to educational resources, we're here to support you every step of the way.`
     },
     cookie_policy: {
         title: 'Cookie Policy',
@@ -33,7 +33,7 @@ export const LEGAL_CONTENT = {
     },
     licenses: {
         title: 'Licenses',
-        content: `Spark uses open-source software and third-party libraries. This page lists the licenses for the software we use to build the best dating experience for you.`
+        content: `Spark uses open-source software and third-party libraries. This page lists the licenses for the software we use to build the best social experience for you.`
     },
     terms_of_service: {
         title: 'Terms of Service',

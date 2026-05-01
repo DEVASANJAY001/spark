@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
 
@@ -12,9 +11,7 @@ const GenderScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (profile?.gender) {
-            setGender(profile.gender);
-        }
+        if (profile?.gender) setGender(profile.gender);
     }, [profile]);
 
     const handleNext = async () => {
@@ -30,99 +27,81 @@ const GenderScreen = ({ navigation }) => {
         }
     };
 
+    const options = [
+        { label: 'Man', value: 'Man' },
+        { label: 'Woman', value: 'Woman' },
+        { label: 'More', value: 'More' },
+    ];
+
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={4 / 13} />
-
-            <View style={styles.content}>
-                <Text style={styles.title}>What's your gender?</Text>
-
-                <View style={styles.optionsContainer}>
-                    {['Man', 'Woman', 'More'].map((option) => (
-                        <TouchableOpacity
-                            key={option}
-                            style={[styles.optionButton, gender === option && styles.optionButtonActive]}
-                            onPress={() => setGender(option)}
-                            disabled={loading}
-                        >
-                            <Text style={[styles.optionText, gender === option && styles.optionTextActive]}>
-                                {option}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-
-                <TouchableOpacity
-                    style={[styles.nextButton, (!gender || loading) && styles.nextButtonDisabled]}
-                    disabled={!gender || loading}
-                    onPress={handleNext}
-                >
-                    {loading ? (
-                        <ActivityIndicator color={COLORS.dark} />
-                    ) : (
-                        <Text style={styles.nextButtonText}>Next</Text>
-                    )}
-                </TouchableOpacity>
+        <OnboardingBase
+            title="What's your gender?"
+            subtitle="Pick the one that best describes you."
+            onNext={handleNext}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            disabled={!gender}
+            progress={0.4}
+        >
+            <View style={styles.optionsContainer}>
+                {options.map((option) => (
+                    <TouchableOpacity
+                        key={option.value}
+                        style={[
+                            styles.optionButton,
+                            gender === option.value && styles.optionButtonActive,
+                            { backgroundColor: gender === option.value ? 'rgba(14, 165, 233, 0.1)' : 'rgba(255,255,255,0.05)' }
+                        ]}
+                        onPress={() => setGender(option.value)}
+                    >
+                        <Text style={[
+                            styles.optionText,
+                            gender === option.value && styles.optionTextActive
+                        ]}>
+                            {option.label}
+                        </Text>
+                        {gender === option.value && (
+                            <View style={styles.radioActive} />
+                        )}
+                    </TouchableOpacity>
+                ))}
             </View>
-        </SafeAreaView>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    content: {
-        flex: 1,
-        paddingHorizontal: SPACING.m,
-        paddingTop: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: SPACING.xl,
-    },
     optionsContainer: {
-        marginBottom: SPACING.xl,
+        gap: 15,
+        marginTop: 10,
     },
     optionButton: {
-        borderWidth: 2,
-        borderColor: COLORS.grey,
-        borderRadius: 30,
-        paddingVertical: 15,
-        paddingHorizontal: 20,
-        marginBottom: SPACING.m,
+        height: 65,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 25,
+        borderWidth: 1.5,
+        borderColor: 'transparent',
     },
     optionButtonActive: {
         borderColor: COLORS.primary,
     },
     optionText: {
-        color: COLORS.lightGrey,
         fontSize: 18,
         fontWeight: '600',
+        color: 'rgba(255,255,255,0.7)',
     },
     optionTextActive: {
-        color: COLORS.primary,
+        color: 'white',
     },
-    nextButton: {
-        backgroundColor: 'white',
-        marginTop: SPACING.xl,
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
-    },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
-    },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+    radioActive: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: COLORS.primary,
+    }
 });
 
 export default GenderScreen;

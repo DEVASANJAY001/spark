@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { COLORS, SPACING } from '../../constants/theme';
-import ProgressBar from '../../components/ProgressBar';
+import OnboardingBase from '../../components/OnboardingBase';
 import useAuth from '../../hooks/useAuth';
 import { userService } from '../../services/userService';
 
@@ -12,9 +11,7 @@ const RelationshipGoalScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (profile?.relationshipGoal) {
-            setGoal(profile.relationshipGoal);
-        }
+        if (profile?.relationshipGoal) setGoal(profile.relationshipGoal);
     }, [profile]);
 
     const options = [
@@ -40,117 +37,77 @@ const RelationshipGoalScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <ProgressBar progress={8 / 13} />
-
-            <ScrollView contentContainerStyle={styles.content}>
-                <Text style={styles.title}>What's your relationship goal?</Text>
-                <Text style={styles.subtitle}>Help others know what you're looking for!</Text>
-
-                <View style={styles.optionsGrid}>
-                    {options.map((option) => (
-                        <TouchableOpacity
-                            key={option.id}
-                            style={[styles.optionCard, goal === option.id && styles.optionCardActive]}
-                            onPress={() => setGoal(option.id)}
-                            disabled={loading}
-                        >
-                            <Text style={styles.emoji}>{option.emoji}</Text>
-                            <Text style={[styles.optionTitle, goal === option.id && styles.optionTitleActive]}>
-                                {option.title}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
+        <OnboardingBase
+            title="What's your goal?"
+            subtitle="Let others know what kind of connection you're looking for."
+            onNext={handleNext}
+            onBack={() => navigation.goBack()}
+            loading={loading}
+            disabled={!goal}
+            progress={0.65}
+        >
+            <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.grid}>
+                    {options.map((option) => {
+                        const isSelected = goal === option.id;
+                        return (
+                            <TouchableOpacity
+                                key={option.id}
+                                style={[
+                                    styles.card,
+                                    isSelected && styles.cardActive,
+                                    { backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.1)' : 'rgba(255,255,255,0.05)' }
+                                ]}
+                                onPress={() => setGoal(option.id)}
+                            >
+                                <Text style={styles.emoji}>{option.emoji}</Text>
+                                <Text style={[styles.cardTitle, isSelected && styles.cardTitleActive]}>
+                                    {option.title}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
             </ScrollView>
-
-            <TouchableOpacity
-                style={[styles.nextButton, (!goal || loading) && styles.nextButtonDisabled]}
-                disabled={!goal || loading}
-                onPress={handleNext}
-            >
-                {loading ? (
-                    <ActivityIndicator color={COLORS.dark} />
-                ) : (
-                    <Text style={styles.nextButtonText}>Next</Text>
-                )}
-            </TouchableOpacity>
-        </SafeAreaView>
+        </OnboardingBase>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.dark,
-    },
-    content: {
-        paddingHorizontal: SPACING.m,
-        paddingBottom: SPACING.l,
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: 'white',
-        marginTop: SPACING.l,
-    },
-    subtitle: {
-        color: COLORS.lightGrey,
-        fontSize: 16,
-        marginTop: 10,
-        marginBottom: SPACING.xl,
-    },
-    optionsGrid: {
+    grid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        justifyContent: 'space-between',
+        gap: 12,
+        marginTop: 10,
+        paddingBottom: 20,
     },
-    optionCard: {
-        width: '31%',
-        aspectRatio: 0.8,
-        backgroundColor: COLORS.grey,
-        borderRadius: 15,
-        padding: 10,
-        marginBottom: SPACING.m,
+    card: {
+        width: '48%',
+        height: 140,
+        borderRadius: 20,
+        padding: 15,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 2,
+        borderWidth: 1.5,
         borderColor: 'transparent',
     },
-    optionCardActive: {
+    cardActive: {
         borderColor: COLORS.primary,
-        backgroundColor: '#2a2a2a',
     },
     emoji: {
-        fontSize: 30,
-        marginBottom: 10,
+        fontSize: 32,
+        marginBottom: 12,
     },
-    optionTitle: {
-        color: 'white',
-        fontSize: 12,
+    cardTitle: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.6)',
         textAlign: 'center',
-        fontWeight: '600',
+        lineHeight: 18,
     },
-    optionTitleActive: {
-        color: COLORS.primary,
-    },
-    nextButton: {
-        backgroundColor: 'white',
-        margin: SPACING.m,
-        paddingVertical: 15,
-        borderRadius: 30,
-        alignItems: 'center',
-        height: 55,
-        justifyContent: 'center',
-    },
-    nextButtonDisabled: {
-        backgroundColor: COLORS.grey,
-    },
-    nextButtonText: {
-        color: COLORS.dark,
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
+    cardTitleActive: {
+        color: 'white',
+    }
 });
 
 export default RelationshipGoalScreen;

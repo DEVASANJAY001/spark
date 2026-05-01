@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Dimensions, SafeAreaView, ActivityIndicator, StatusBar, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Dimensions, SafeAreaView, ActivityIndicator, StatusBar, Platform, TextInput, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { db } from '../../firebase/config';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { TextInput, Alert } from 'react-native';
+import { collection, getDocs } from 'firebase/firestore';
 import { couponService } from '../../services/couponService';
 import useAuth from '../../hooks/useAuth';
+import { useTheme } from '../../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 const SubscriptionScreen = () => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
     const [plans, setPlans] = useState([]);
     const [selectedPlan, setSelectedPlan] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -24,16 +25,12 @@ const SubscriptionScreen = () => {
     useEffect(() => {
         const fetchPlans = async () => {
             try {
-                // Simplified query without orderBy to avoid index issues initially
                 const querySnapshot = await getDocs(collection(db, 'plans'));
                 const fetchedPlans = querySnapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 }));
-                
-                // Sort manually in JS
                 fetchedPlans.sort((a, b) => (a.price || 0) - (b.price || 0));
-                
                 setPlans(fetchedPlans);
                 if (fetchedPlans.length > 0) {
                     setSelectedPlan(fetchedPlans[1] || fetchedPlans[0]);
@@ -44,19 +41,16 @@ const SubscriptionScreen = () => {
                 setLoading(false);
             }
         };
-
         fetchPlans();
     }, []);
 
     const handleRedeem = async () => {
         if (!couponCode.trim()) return;
-        
         setRedeeming(true);
         try {
             const result = await couponService.redeemCoupon(user.uid, couponCode);
             Alert.alert('Success', result.message);
             setCouponCode('');
-            // Optional: Refresh profile or navigate away
             navigation.goBack();
         } catch (error) {
             Alert.alert('Error', error.message || 'Failed to redeem coupon');
@@ -67,7 +61,7 @@ const SubscriptionScreen = () => {
 
     if (loading) {
         return (
-            <View style={styles.centerContainer}>
+            <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         );
@@ -75,11 +69,11 @@ const SubscriptionScreen = () => {
 
     if (plans.length === 0) {
         return (
-            <View style={styles.centerContainer}>
-                <Ionicons name="alert-circle-outline" size={64} color={COLORS.grey} />
-                <Text style={styles.errorText}>No subscription plans found.</Text>
-                <Text style={styles.errorSubtext}>Please initialize plans from the Web Admin portal.</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
+            <View style={[styles.centerContainer, { backgroundColor: colors.background }]}>
+                <Ionicons name="alert-circle-outline" size={64} color={colors.textSecondary} />
+                <Text style={[styles.errorText, { color: colors.text }]}>No subscription plans found.</Text>
+                <Text style={[styles.errorSubtext, { color: colors.textSecondary }]}>Please initialize plans from the portal.</Text>
+                <TouchableOpacity style={[styles.retryButton, { backgroundColor: COLORS.primary }]} onPress={() => navigation.goBack()}>
                     <Text style={styles.retryText}>Go Back</Text>
                 </TouchableOpacity>
             </View>
@@ -87,380 +81,237 @@ const SubscriptionScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+            <StatusBar barStyle="light-content" />
+            
+            {/* Minimalist Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="close" size={28} color="white" />
+                <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, { backgroundColor: colors.surface }]}>
+                    <Ionicons name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Upgrade Your Experience</Text>
+                <Text style={[styles.headerTitle, { color: colors.text }]}>Spark Premium</Text>
+                <View style={{ width: 44 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <Text style={styles.tagline}>Unlock premium features and find your perfect match faster.</Text>
+                <View style={styles.heroSection}>
+                    <Text style={[styles.tagline, { color: colors.text }]}>Unlock Your Full Potential</Text>
+                    <Text style={[styles.subTagline, { color: colors.textSecondary }]}>Choose a plan that fits your goals.</Text>
+                </View>
 
-                {/* Free Plan Info Card */}
-                <View style={[styles.planCard, { opacity: 0.8, backgroundColor: 'rgba(255,255,255,0.03)' }]}>
-                    <View style={styles.planHeader}>
-                        <Text style={[styles.planName, { color: '#888' }]}>FREE PLAN (Basic)</Text>
-                        <Text style={[styles.planPrice, { color: '#888' }]}>FREE</Text>
-                    </View>
-                    <View style={styles.featuresList}>
-                        <Text style={styles.sectionHeader}>YOU CAN:</Text>
-                        <View style={styles.featureRow}>
-                            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                            <Text style={styles.featureText}>Swipe (limited per day)</Text>
+                {/* Free Plan (Legacy/Basic Info) */}
+                <View style={[styles.basicPlanCard, { backgroundColor: colors.surface }]}>
+                    <Text style={styles.basicPlanLabel}>CURRENTLY ON BASIC</Text>
+                    <View style={styles.basicFeatures}>
+                        <View style={styles.featureItem}>
+                            <Ionicons name="checkmark-circle" size={14} color="#00FF88" />
+                            <Text style={[styles.featureSmallText, { color: colors.textSecondary }]}>Daily Swipes</Text>
                         </View>
-                        <View style={styles.featureRow}>
-                            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                            <Text style={styles.featureText}>Match and chat</Text>
+                        <View style={styles.featureItem}>
+                            <Ionicons name="close-circle" size={14} color="#FF3B30" />
+                            <Text style={[styles.featureSmallText, { color: colors.textSecondary }]}>Unlimited Swipes</Text>
                         </View>
-                        <View style={styles.featureRow}>
-                            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                            <Text style={styles.featureText}>Basic filters (age, distance)</Text>
-                        </View>
-                        
-                        <Text style={[styles.sectionHeader, { marginTop: 10 }]}>YOU CANNOT:</Text>
-                        <View style={styles.featureRow}>
-                            <Ionicons name="close-circle" size={16} color="#F44336" />
-                            <Text style={styles.featureText}>Swipe unlimited / Rewind</Text>
-                        </View>
-                        <View style={styles.featureRow}>
-                            <Ionicons name="close-circle" size={16} color="#F44336" />
-                            <Text style={styles.featureText}>See who liked you / Top Picks</Text>
-                        </View>
-                        <View style={styles.featureRow}>
-                            <Ionicons name="close-circle" size={16} color="#F44336" />
-                            <Text style={styles.featureText}>Change location / No Ads</Text>
+                        <View style={styles.featureItem}>
+                            <Ionicons name="close-circle" size={14} color="#FF3B30" />
+                            <Text style={[styles.featureSmallText, { color: colors.textSecondary }]}>See Who Likes You</Text>
                         </View>
                     </View>
                 </View>
 
-                <View style={styles.divider} />
-                <Text style={styles.premiumHeader}>Available Upgrades</Text>
+                {/* Available Plans */}
+                <View style={styles.plansSection}>
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Select a Plan</Text>
+                    <View style={styles.plansList}>
+                        {plans.map((plan) => (
+                            <TouchableOpacity
+                                key={plan.id}
+                                style={[
+                                    styles.planCard,
+                                    { backgroundColor: colors.surface },
+                                    selectedPlan?.id === plan.id && { borderColor: plan.colors?.[0] || COLORS.primary, borderWidth: 2 }
+                                ]}
+                                onPress={() => setSelectedPlan(plan)}
+                                activeOpacity={0.9}
+                            >
+                                {plan.popular && (
+                                    <LinearGradient
+                                        colors={plan.colors || [COLORS.primary, '#FF3366']}
+                                        style={styles.popularBadge}
+                                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                                    >
+                                        <Text style={styles.popularText}>BEST VALUE</Text>
+                                    </LinearGradient>
+                                )}
+                                <View style={styles.planMain}>
+                                    <View>
+                                        <Text style={[styles.planName, { color: colors.text }]}>{plan.name}</Text>
+                                        <Text style={[styles.planPeriod, { color: colors.textSecondary }]}>{plan.period}</Text>
+                                    </View>
+                                    <View style={styles.priceColumn}>
+                                        <Text style={[styles.planPrice, { color: colors.text }]}>₹{plan.price}</Text>
+                                        <Text style={[styles.perMonth, { color: colors.textSecondary }]}>one-time</Text>
+                                    </View>
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
 
-                {/* Redeem Section */}
-                <View style={styles.redeemSection}>
-                    <Text style={styles.redeemTitle}>Have a promo code?</Text>
-                    <View style={styles.redeemInputWrapper}>
+                {/* Full Benefits Breakdown */}
+                {selectedPlan && (
+                    <View style={[styles.benefitsCard, { backgroundColor: colors.surface }]}>
+                        <Text style={[styles.benefitsTitle, { color: colors.text }]}>{selectedPlan.name} Benefits</Text>
+                        <View style={styles.benefitItems}>
+                            {selectedPlan.features.map((feature, i) => (
+                                <View key={i} style={styles.benefitRow}>
+                                    <View style={[styles.checkCircle, { backgroundColor: (selectedPlan.colors?.[0] || COLORS.primary) + '20' }]}>
+                                        <Ionicons name="checkmark-sharp" size={14} color={selectedPlan.colors?.[0] || COLORS.primary} />
+                                    </View>
+                                    <Text style={[styles.benefitText, { color: colors.textSecondary }]}>{feature}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    </View>
+                )}
+
+                {/* Coupon Section */}
+                <View style={[styles.couponCard, { backgroundColor: colors.surface }]}>
+                    <Text style={[styles.couponTitle, { color: colors.text }]}>Have a Coupon?</Text>
+                    <View style={styles.couponInputRow}>
                         <TextInput
-                            style={styles.redeemInput}
+                            style={[styles.couponInput, { backgroundColor: colors.background, color: colors.text }]}
                             placeholder="Enter Code"
-                            placeholderTextColor="#666"
+                            placeholderTextColor={colors.textSecondary}
                             value={couponCode}
                             onChangeText={setCouponCode}
                             autoCapitalize="characters"
                         />
                         <TouchableOpacity 
-                            style={[styles.redeemBtn, !couponCode.trim() && { opacity: 0.5 }]} 
+                            style={[styles.redeemBtn, { backgroundColor: COLORS.primary }]}
                             onPress={handleRedeem}
-                            disabled={redeeming || !couponCode.trim()}
+                            disabled={redeeming || !couponCode}
                         >
-                            {redeeming ? (
-                                <ActivityIndicator size="small" color="white" />
-                            ) : (
-                                <Text style={styles.redeemBtnText}>Apply</Text>
-                            )}
+                            {redeeming ? <ActivityIndicator size="small" color="white" /> : <Text style={styles.redeemText}>Apply</Text>}
                         </TouchableOpacity>
                     </View>
                 </View>
-
-                <View style={styles.plansContainer}>
-                    {plans.map((plan) => (
-                        <TouchableOpacity
-                            key={plan.id}
-                            style={[
-                                styles.planCard,
-                                selectedPlan.id === plan.id && { borderColor: plan.colors[0], borderWidth: 2 }
-                            ]}
-                            onPress={() => setSelectedPlan(plan)}
-                        >
-                            {plan.popular && (
-                                <View style={[styles.popularBadge, { backgroundColor: plan.colors[0] }]}>
-                                    <Text style={styles.popularText}>MOST POPULAR</Text>
-                                </View>
-                            )}
-                            <View style={styles.planHeader}>
-                                <Text style={styles.planName}>{plan.name}</Text>
-                                <View style={styles.priceContainer}>
-                                    <Text style={styles.planPrice}>₹{plan.price}</Text>
-                                    <Text style={styles.planPeriod}>/{plan.period}</Text>
-                                </View>
-                            </View>
-                            <View style={styles.featuresList}>
-                                {plan.features.slice(0, 3).map((feature, i) => (
-                                    <View key={i} style={styles.featureRow}>
-                                        <Ionicons name="checkmark-circle" size={18} color={plan.colors[0]} />
-                                        <Text style={styles.featureText}>{feature}</Text>
-                                    </View>
-                                ))}
-                            </View>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-
-                <View style={styles.benefitsSection}>
-                    <Text style={styles.benefitsTitle}>Full Plan Benefits</Text>
-                    {selectedPlan.features.map((feature, i) => (
-                        <View key={i} style={styles.benefitRow}>
-                            <Ionicons name="star" size={20} color={selectedPlan.colors[0]} />
-                            <Text style={styles.benefitText}>{feature}</Text>
-                        </View>
-                    ))}
-                </View>
             </ScrollView>
 
-            <View style={styles.footer}>
+            {/* Bottom Sticky Footer */}
+            <View style={[styles.footer, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
                 <TouchableOpacity
-                    style={styles.subscribeButton}
+                    style={styles.subscribeBtn}
                     onPress={() => navigation.navigate('Payment', { plan: selectedPlan })}
                 >
                     <LinearGradient
-                        colors={selectedPlan.colors}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.gradientButton}
+                        colors={selectedPlan?.colors || [COLORS.primary, '#FF3366']}
+                        style={styles.subscribeGradient}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                     >
-                        <Text style={styles.subscribeText}>Select {selectedPlan.name}</Text>
+                        <Text style={styles.subscribeBtnText}>Upgrade to {selectedPlan?.name}</Text>
+                        <Ionicons name="arrow-forward-sharp" size={20} color="white" />
                     </LinearGradient>
                 </TouchableOpacity>
-                <Text style={styles.legalText}>Recurring billing, cancel anytime.</Text>
+                <Text style={[styles.footerNote, { color: colors.textSecondary }]}>Secure payment • Cancel anytime</Text>
             </View>
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#000',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-    },
+    container: { flex: 1 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: SPACING.m,
-        paddingVertical: 15,
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        height: 70,
     },
     backButton: {
-        padding: 5,
-    },
-    headerTitle: {
-        color: 'white',
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginLeft: 15,
-    },
-    scrollContent: {
-        paddingHorizontal: SPACING.m,
-        paddingBottom: 150,
-    },
-    tagline: {
-        color: '#888',
-        fontSize: 16,
-        textAlign: 'center',
-        marginVertical: 20,
-        lineHeight: 22,
-    },
-    sectionHeader: {
-        color: '#666',
-        fontSize: 10,
-        fontWeight: 'bold',
-        letterSpacing: 1,
-        marginBottom: 8,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        marginVertical: 30,
-    },
-    premiumHeader: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 20,
-    },
-    plansContainer: {
-        gap: 15,
-    },
-    planCard: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 24,
-        padding: 24,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        position: 'relative',
-    },
-    popularBadge: {
-        position: 'absolute',
-        top: -10,
-        right: 20,
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 10,
-    },
-    popularText: {
-        color: 'white',
-        fontSize: 10,
-        fontWeight: 'bold',
-    },
-    planHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 15,
-    },
-    planName: {
-        color: 'white',
-        fontSize: 22,
-        fontWeight: 'bold',
-    },
-    priceContainer: {
-        flexDirection: 'row',
-        alignItems: 'baseline',
-    },
-    planPrice: {
-        color: 'white',
-        fontSize: 24,
-        fontWeight: 'bold',
-    },
-    planPeriod: {
-        color: '#888',
-        fontSize: 14,
-    },
-    featuresList: {
-        gap: 8,
-    },
-    featureRow: {
-        flexDirection: 'row',
+        width: 44,
+        height: 44,
+        borderRadius: 15,
+        justifyContent: 'center',
         alignItems: 'center',
     },
-    featureText: {
-        color: '#ccc',
-        fontSize: 14,
-        marginLeft: 10,
-    },
-    benefitsSection: {
-        marginTop: 40,
-        padding: 24,
-        backgroundColor: 'rgba(255,255,255,0.03)',
+    headerTitle: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+    scrollContent: { paddingBottom: 160 },
+    heroSection: { alignItems: 'center', paddingVertical: 25, paddingHorizontal: 40 },
+    tagline: { fontSize: 26, fontWeight: '900', textAlign: 'center', lineHeight: 32 },
+    subTagline: { fontSize: 16, fontWeight: '500', marginTop: 10, opacity: 0.8 },
+    basicPlanCard: {
+        marginHorizontal: 20,
+        padding: 20,
         borderRadius: 24,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
     },
-    benefitsTitle: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 20,
+    basicPlanLabel: { fontSize: 11, fontWeight: '900', color: '#888', letterSpacing: 1.5, marginBottom: 15 },
+    basicFeatures: { flexDirection: 'row', flexWrap: 'wrap', gap: 15 },
+    featureItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    featureSmallText: { fontSize: 12, fontWeight: '600' },
+    plansSection: { marginTop: 30, paddingHorizontal: 20 },
+    sectionTitle: { fontSize: 18, fontWeight: '900', marginBottom: 15 },
+    plansList: { gap: 15 },
+    planCard: {
+        borderRadius: 24,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        position: 'relative',
     },
-    benefitRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 15,
+    popularBadge: {
+        position: 'absolute',
+        top: -12,
+        right: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 5,
+        borderRadius: 10,
     },
-    benefitText: {
-        color: 'white',
+    popularText: { color: 'white', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+    planMain: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    planName: { fontSize: 22, fontWeight: '900' },
+    planPeriod: { fontSize: 14, fontWeight: '600', marginTop: 4 },
+    priceColumn: { alignItems: 'flex-end' },
+    planPrice: { fontSize: 24, fontWeight: '900' },
+    perMonth: { fontSize: 12, fontWeight: '500' },
+    benefitsCard: { margin: 20, padding: 25, borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+    benefitsTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
+    benefitItems: { gap: 15 },
+    benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    checkCircle: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+    benefitText: { fontSize: 15, fontWeight: '500' },
+    couponCard: { marginHorizontal: 20, padding: 20, borderRadius: 24, marginBottom: 20 },
+    couponTitle: { fontSize: 16, fontWeight: '800', marginBottom: 15 },
+    couponInputRow: { flexDirection: 'row', gap: 10 },
+    couponInput: {
+        flex: 1,
+        height: 52,
+        borderRadius: 15,
+        paddingHorizontal: 15,
         fontSize: 16,
-        marginLeft: 15,
+        fontWeight: '700',
     },
+    redeemBtn: { paddingHorizontal: 20, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+    redeemText: { color: 'white', fontWeight: '800' },
     footer: {
         position: 'absolute',
         bottom: 0,
-        width: '100%',
-        backgroundColor: 'rgba(0,0,0,0.9)',
+        left: 0,
+        right: 0,
         padding: 20,
         borderTopWidth: 1,
-        borderTopColor: '#222',
     },
-    subscribeButton: {
-        borderRadius: 30,
-        overflow: 'hidden',
-    },
-    gradientButton: {
-        paddingVertical: 18,
-        alignItems: 'center',
-    },
-    subscribeText: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    legalText: {
-        color: '#555',
-        fontSize: 12,
-        textAlign: 'center',
-        marginTop: 10,
-    },
-    centerContainer: {
-        flex: 1,
-        backgroundColor: '#000',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 40,
-    },
-    errorText: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginTop: 20,
-        textAlign: 'center',
-    },
-    errorSubtext: {
-        color: '#888',
-        fontSize: 14,
-        textAlign: 'center',
-        marginTop: 10,
-        marginBottom: 30,
-    },
-    retryButton: {
-        backgroundColor: COLORS.primary,
-        paddingHorizontal: 30,
-        paddingVertical: 12,
-        borderRadius: 25,
-    },
-    retryText: {
-        color: 'white',
-        fontWeight: 'bold',
-    },
-    redeemSection: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        padding: 20,
-        borderRadius: 20,
-        marginBottom: 25,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    redeemTitle: {
-        color: 'white',
-        fontSize: 14,
-        fontWeight: 'bold',
-        marginBottom: 10,
-    },
-    redeemInputWrapper: {
-        flexDirection: 'row',
-        gap: 10,
-    },
-    redeemInput: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        borderRadius: 12,
-        paddingHorizontal: 15,
-        height: 50,
-        color: 'white',
-        fontSize: 16,
-    },
-    redeemBtn: {
-        backgroundColor: COLORS.primary,
-        borderRadius: 12,
-        paddingHorizontal: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    redeemBtnText: {
-        color: 'white',
-        fontWeight: 'bold',
-    }
+    subscribeBtn: { borderRadius: 22, overflow: 'hidden', height: 64 },
+    subscribeGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+    subscribeBtnText: { color: 'white', fontSize: 18, fontWeight: '900' },
+    footerNote: { textAlign: 'center', fontSize: 12, marginTop: 12, fontWeight: '500' },
+    centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+    errorText: { fontSize: 18, fontWeight: '800', marginTop: 20 },
+    errorSubtext: { fontSize: 14, textAlign: 'center', marginTop: 10, marginBottom: 30 },
+    retryButton: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 20 },
+    retryText: { color: 'white', fontWeight: '800' }
 });
 
 export default SubscriptionScreen;
+

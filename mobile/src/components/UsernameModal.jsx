@@ -20,11 +20,13 @@ const UsernameModal = ({ visible, onClose, uid, currentUsername }) => {
     const [isAvailable, setIsAvailable] = useState(null);
     const [checking, setChecking] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [success, setSuccess] = useState(false);
 
     useEffect(() => {
         if (visible) {
             setUsername(currentUsername || '');
             setIsAvailable(null);
+            setSuccess(false);
         }
     }, [visible, currentUsername]);
 
@@ -49,8 +51,10 @@ const UsernameModal = ({ visible, onClose, uid, currentUsername }) => {
         setSaving(true);
         try {
             await userService.setUsername(uid, username);
-            Alert.alert("Success", "Your username has been updated!");
-            onClose();
+            setSuccess(true);
+            setTimeout(() => {
+                onClose();
+            }, 2000);
         } catch (error) {
             Alert.alert("Error", error.message || "Failed to set username");
         } finally {
@@ -65,49 +69,63 @@ const UsernameModal = ({ visible, onClose, uid, currentUsername }) => {
                 style={styles.modalContainer}
             >
                 <View style={styles.content}>
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Set Username</Text>
-                        <TouchableOpacity onPress={onClose}>
-                            <Ionicons name="close" size={24} color="white" />
-                        </TouchableOpacity>
-                    </View>
+                    {success ? (
+                        <View style={styles.successContainer}>
+                            <View style={styles.successBadge}>
+                                <Ionicons name="checkmark-circle" size={80} color="#00e882" />
+                            </View>
+                            <Text style={styles.successTitle}>Username Secured!</Text>
+                            <Text style={styles.successSubtitle}>
+                                You are now known as <Text style={styles.successHighlight}>@{username}</Text>
+                            </Text>
+                        </View>
+                    ) : (
+                        <>
+                            <View style={styles.header}>
+                                <Text style={styles.title}>Set Username</Text>
+                                <TouchableOpacity onPress={onClose}>
+                                    <Ionicons name="close" size={24} color="white" />
+                                </TouchableOpacity>
+                            </View>
 
-                    <Text style={styles.label}>Choose a unique username</Text>
-                    <View style={styles.inputWrapper}>
-                        <Text style={styles.prefix}>@</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={username}
-                            onChangeText={(val) => setUsername(val.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                            placeholder="username"
-                            placeholderTextColor="#666"
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            maxLength={20}
-                        />
-                        {checking && <ActivityIndicator size="small" color={COLORS.primary} />}
-                        {!checking && isAvailable === true && <Ionicons name="checkmark-circle" size={20} color="#4cd964" />}
-                        {!checking && isAvailable === false && username.length >= 3 && <Ionicons name="close-circle" size={20} color="#ff3b30" />}
-                    </View>
+                            <Text style={styles.label}>Choose a unique username</Text>
+                            <View style={styles.inputWrapper}>
+                                <Text style={styles.prefix}>@</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={username}
+                                    onChangeText={(val) => setUsername(val.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                                    placeholder="username"
+                                    placeholderTextColor="#666"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    maxLength={20}
+                                />
+                                {checking && <ActivityIndicator size="small" color={COLORS.primary} />}
+                                {!checking && isAvailable === true && <Ionicons name="checkmark-circle" size={20} color="#4cd964" />}
+                                {!checking && isAvailable === false && username.length >= 3 && <Ionicons name="close-circle" size={20} color="#ff3b30" />}
+                            </View>
 
-                    {username.length > 0 && username.length < 3 && (
-                        <Text style={styles.errorText}>Username must be at least 3 characters</Text>
+                            {username.length > 0 && username.length < 3 && (
+                                <Text style={styles.errorText}>Username must be at least 3 characters</Text>
+                            )}
+                            {isAvailable === false && username.length >= 3 && (
+                                <Text style={styles.errorText}>Username is already taken</Text>
+                            )}
+
+                            <TouchableOpacity
+                                style={[styles.saveBtn, (!isAvailable && username !== currentUsername) && styles.disabledBtn]}
+                                onPress={handleSave}
+                                disabled={saving || (!isAvailable && username !== currentUsername)}
+                            >
+                                {saving ? (
+                                    <ActivityIndicator color="black" />
+                                ) : (
+                                    <Text style={styles.saveBtnText}>Save Username</Text>
+                                )}
+                            </TouchableOpacity>
+                        </>
                     )}
-                    {isAvailable === false && username.length >= 3 && (
-                        <Text style={styles.errorText}>Username is already taken</Text>
-                    )}
-
-                    <TouchableOpacity
-                        style={[styles.saveBtn, (!isAvailable && username !== currentUsername) && styles.disabledBtn]}
-                        onPress={handleSave}
-                        disabled={saving || (!isAvailable && username !== currentUsername)}
-                    >
-                        {saving ? (
-                            <ActivityIndicator color="black" />
-                        ) : (
-                            <Text style={styles.saveBtnText}>Save Username</Text>
-                        )}
-                    </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
         </Modal>
@@ -182,6 +200,28 @@ const styles = StyleSheet.create({
         fontSize: 12,
         marginTop: 5,
         marginLeft: 5,
+    },
+    successContainer: {
+        alignItems: 'center',
+        paddingVertical: 30,
+    },
+    successBadge: {
+        marginBottom: 20,
+    },
+    successTitle: {
+        color: 'white',
+        fontSize: 24,
+        fontWeight: '900',
+        marginBottom: 10,
+    },
+    successSubtitle: {
+        color: '#888',
+        fontSize: 16,
+        textAlign: 'center',
+    },
+    successHighlight: {
+        color: '#00e882',
+        fontWeight: 'bold',
     }
 });
 
