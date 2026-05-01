@@ -38,17 +38,20 @@ const SafetyCenterScreen = ({ navigation }) => {
         {
             title: 'Reporting & Blocking',
             desc: 'Learn how to report suspicious or abusive behavior.',
-            icon: 'flag-outline'
+            icon: 'flag-outline',
+            color: '#FF9500'
         },
         {
             title: 'Photo Verification',
             desc: 'See how to get verified and look for the blue checkmark.',
-            icon: 'checkmark-circle-outline'
+            icon: 'checkmark-circle-outline',
+            color: COLORS.primary
         },
         {
             title: 'Privacy Settings',
             desc: 'Control who sees your profile and how you interact.',
-            icon: 'shield-outline'
+            icon: 'shield-outline',
+            color: '#32D74B'
         }
     ];
 

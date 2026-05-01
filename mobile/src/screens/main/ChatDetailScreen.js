@@ -1,15 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, FlatList, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Clipboard, Dimensions, Animated } from 'react-native';
+import { StyleSheet, View, Text, FlatList, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Clipboard, Dimensions, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { presenceService } from '../../services/presenceService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import Animated, { 
+    FadeInUp, 
+    FadeOutDown, 
+    Layout, 
+    useAnimatedStyle, 
+    useSharedValue, 
+    withSpring,
+    withTiming,
+    interpolate,
+    runOnJS
+} from 'react-native-reanimated';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import useAuth from '../../hooks/useAuth';
 import { chatService } from '../../services/chatService';
+import { subscriptionService } from '../../services/subscriptionService';
 import * as ScreenCapture from 'expo-screen-capture';
 
 const { width, height } = Dimensions.get('window');
@@ -19,7 +31,7 @@ const POPULAR_EMOJIS = ['❤️', '😂', '🔥', '😍', '✨', '🙌', '💯',
 const ChatDetailScreen = ({ route, navigation }) => {
     const { colors } = useTheme();
     const { matchId, otherUser, createdAt } = route.params;
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(true);
@@ -31,14 +43,18 @@ const ChatDetailScreen = ({ route, navigation }) => {
     const [isOptionsVisible, setIsOptionsVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [replyingTo, setReplyingTo] = useState(null);
+    const [subscription, setSubscription] = useState(null);
     const flatListRef = useRef();
     const typingTimeoutRef = useRef(null);
 
-    // Swipe to see time animation
-    const swipeAnim = useRef(new Animated.Value(0)).current;
+    // Reanimated Shared Values
+    const inputScale = useSharedValue(1);
+    const swipeOffset = useSharedValue(0);
 
     // Prevent screenshots in the chat
     ScreenCapture.usePreventScreenCapture();
+
+    const hasReadReceipts = subscriptionService.hasFeature(subscription, 'read_receipts');
 
     useEffect(() => {
         if (user && matchId && otherUser) {
@@ -62,29 +78,36 @@ const ChatDetailScreen = ({ route, navigation }) => {
             });
 
             chatService.markAsRead(matchId, user.uid);
+            loadSubscription();
+
+            // Hardware back button override
+            const backAction = () => {
+                navigation.navigate('ChatList');
+                return true;
+            };
+            const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
 
             return () => {
                 unsubscribe();
                 unsubscribeStatus();
                 unsubscribeTyping();
+                backHandler.remove();
                 if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
             };
         }
-    }, [user, matchId, otherUser]);
+    }, [user, matchId, otherUser, profile?.premiumTier]);
 
-    const onGestureEvent = Animated.event(
-        [{ nativeEvent: { translationX: swipeAnim } }],
-        { useNativeDriver: true }
-    );
+    const handleBack = () => {
+        navigation.navigate('ChatList');
+    };
 
-    const onHandlerStateChange = (event) => {
-        if (event.nativeEvent.oldState === State.ACTIVE) {
-            Animated.spring(swipeAnim, {
-                toValue: 0,
-                useNativeDriver: true,
-                friction: 5
-            }).start();
+    const loadSubscription = async () => {
+        if (!user?.uid || !profile?.premiumTier) {
+            setSubscription(null);
+            return;
         }
+        const sub = await subscriptionService.getUserSubscription(user.uid, profile.premiumTier);
+        setSubscription(sub);
     };
 
     const handleTextChange = (text) => {
@@ -103,25 +126,14 @@ const ChatDetailScreen = ({ route, navigation }) => {
         }, 2000);
     };
 
-    const formatLastSeen = (status) => {
-        if (!status) return 'Offline';
-        if (status.state === 'online') return 'Online now';
-        const lastChanged = status.last_changed;
-        if (!lastChanged) return 'Offline';
-        const date = new Date(lastChanged);
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        if (diffMins < 1) return 'Last seen just now';
-        if (diffMins < 60) return `Last seen ${diffMins}m ago`;
-        return `Last seen ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    };
+    const handleSend = async (emoji = null) => {
+        const textToSend = emoji || inputText.trim();
+        if (!textToSend || !user) return;
 
-    const handleSend = async (textOverride) => {
-        const textToSend = (textOverride || inputText).trim();
-        if (textToSend === '') return;
-
-        setInputText('');
+        // Clear input immediately for smooth feel
+        const prevText = inputText;
+        if (!emoji) setInputText('');
+        setReplyingTo(null);
 
         try {
             if (isEditing && selectedMessage) {
@@ -130,155 +142,239 @@ const ChatDetailScreen = ({ route, navigation }) => {
                 setSelectedMessage(null);
             } else {
                 await chatService.sendMessage(matchId, user.uid, textToSend, null, replyingTo);
-                setReplyingTo(null);
             }
-        } catch (error) {
-            console.error('Send/Edit error:', error);
-            Alert.alert("Error", "Action failed.");
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        } catch (e) {
+            Alert.alert('Error', 'Failed to send message');
+            if (!emoji) setInputText(prevText); // Restore on error
+        }
+    };
+
+    const handleReaction = async (emoji) => {
+        if (!selectedMessage || !user) return;
+        try {
+            await chatService.toggleReaction(matchId, selectedMessage.id, user.uid, emoji);
+            setIsOptionsVisible(false);
+            setSelectedMessage(null);
+        } catch (e) {
+            console.error('Failed to react:', e);
         }
     };
 
     const handleLongPress = (message) => {
-        if (message.isDeleted || message.isSystem) return;
+        if (message.isDeleted) return;
         setSelectedMessage(message);
         setIsOptionsVisible(true);
     };
 
-    const handleDelete = async (mode) => {
+    const handleDelete = (mode) => {
+        if (!selectedMessage || !user) return;
+        chatService.deleteMessage(matchId, selectedMessage.id, mode, user.uid);
         setIsOptionsVisible(false);
-        if (!selectedMessage) return;
-        try {
-            await chatService.deleteMessage(matchId, selectedMessage.id, mode, user.uid);
-            setSelectedMessage(null);
-        } catch (error) {
-            Alert.alert("Error", "Delete failed.");
-        }
+        setSelectedMessage(null);
     };
 
     const handleCopy = () => {
-        if (selectedMessage) {
-            Clipboard.setString(selectedMessage.text);
-            setIsOptionsVisible(false);
-            setSelectedMessage(null);
-        }
+        if (!selectedMessage) return;
+        Clipboard.setString(selectedMessage.text);
+        setIsOptionsVisible(false);
+        setSelectedMessage(null);
     };
 
-    const startEdit = () => {
-        setIsOptionsVisible(false);
-        setIsEditing(true);
-        setInputText(selectedMessage.text);
-    };
-
-    const startReply = () => {
-        setIsOptionsVisible(false);
+    const handleReply = () => {
+        if (!selectedMessage) return;
         setReplyingTo(selectedMessage);
+        setIsOptionsVisible(false);
+        setSelectedMessage(null);
     };
 
-    const formatMessageTime = (timestamp) => {
-        if (!timestamp) return '';
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const handleEdit = () => {
+        if (!selectedMessage) return;
+        setInputText(selectedMessage.text);
+        setIsEditing(true);
+        setIsOptionsVisible(false);
+    };
+
+    const formatMessageTime = (createdAt) => {
+        if (!createdAt) return '';
+        const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+        return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    };
+
+    const formatLastSeen = (status) => {
+        if (!status) return 'Offline';
+        if (status.state === 'online') return 'Active now';
+        if (!status.last_changed) return 'Offline';
+        
+        const lastChanged = new Date(status.last_changed);
         const now = new Date();
-        const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-        
-        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
-        if (diffDays === 0) return timeStr;
-        if (diffDays === 1) return `Yesterday ${timeStr}`;
-        if (diffDays < 7) return `${date.toLocaleDateString([], { weekday: 'long' })} ${timeStr}`;
-        
-        return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${timeStr}`;
+        const diff = (now - lastChanged) / 1000;
+
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        return lastChanged.toLocaleDateString();
     };
 
-    const shouldShowTime = (currentMsg, nextMsg) => {
+    const shouldShowTime = (msg, nextMsg) => {
         if (!nextMsg) return true;
-        if (!currentMsg.createdAt || !nextMsg.createdAt) return false;
-        
-        const curDate = currentMsg.createdAt.toDate ? currentMsg.createdAt.toDate() : new Date(currentMsg.createdAt);
-        const nextDate = nextMsg.createdAt.toDate ? nextMsg.createdAt.toDate() : new Date(nextMsg.createdAt);
-        
-        // Show time if diff > 30 mins
+        const curDate = msg.createdAt?.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt);
+        const nextDate = nextMsg.createdAt?.toDate ? nextMsg.createdAt.toDate() : new Date(nextMsg.createdAt);
         return Math.abs(curDate - nextDate) > 30 * 60 * 1000;
     };
 
     const renderMessage = ({ item, index }) => {
-        if (!user) return null;
-        const isMine = item.senderId === user.uid;
-        
+        const isMine = item.senderId === user?.uid;
         const nextMsg = messages[index + 1];
         const showTimeHeader = shouldShowTime(item, nextMsg);
 
-        if (item.isSystem) {
-            return (
-                <View style={styles.systemMessageContainer}>
-                    <Text style={styles.systemMessageText}>{item.text}</Text>
-                </View>
-            );
-        }
-
-        const msgTime = item.createdAt ? (item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-
-        // Swipe limit logic
-        const translateX = swipeAnim.interpolate({
-            inputRange: [-100, 0, 100],
-            outputRange: [-60, 0, 60],
-            extrapolate: 'clamp'
-        });
-
         return (
-            <View>
-                {showTimeHeader && (
-                    <Text style={styles.timeHeader}>{formatMessageTime(item.createdAt)}</Text>
-                )}
-                
-                <View style={styles.swipeMessageWrapper}>
-                    {/* Hidden Time to be revealed on swipe */}
-                    <Animated.View style={[styles.hiddenTimeContainer, { opacity: swipeAnim.interpolate({ inputRange: [-60, -20, 0], outputRange: [1, 0, 0] }) }]}>
-                        <Text style={styles.hiddenTimeText}>{msgTime}</Text>
-                    </Animated.View>
-
-                    <Animated.View style={{ transform: [{ translateX }] }}>
-                        <TouchableOpacity 
-                            activeOpacity={0.8}
-                            onLongPress={() => handleLongPress(item)}
-                            style={[styles.messageBubbleContainer, isMine ? styles.myMessageContainer : styles.theirMessageContainer]}
-                        >
-                            {item.replyingTo && (
-                                <View style={[styles.replyInBubble, isMine ? styles.myReply : styles.theirReply]}>
-                                    <Text style={styles.replyInBubbleTitle}>
-                                        {item.replyingTo.senderId === user.uid ? 'You' : otherUser?.firstName}
-                                    </Text>
-                                    <Text style={styles.replyInBubbleText} numberOfLines={1}>{item.replyingTo.text}</Text>
-                                </View>
-                            )}
-                            {isMine ? (
-                                <LinearGradient
-                                    colors={item.isDeleted ? ['#333', '#222'] : ['#FF3366', '#FF1493']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                    style={styles.myBubble}
-                                >
-                                    <Text style={[styles.myMessageText, item.isDeleted && { color: '#666', fontStyle: 'italic' }]}>
-                                        {item.text}
-                                    </Text>
-                                    {item.isEdited && !item.isDeleted && <Text style={styles.editedTag}>edited</Text>}
-                                </LinearGradient>
-                            ) : (
-                                <View style={[styles.theirBubble, { backgroundColor: item.isDeleted ? '#1a1a1a' : 'rgba(255,255,255,0.1)' }]}>
-                                    <Text style={[styles.theirMessageText, { color: item.isDeleted ? '#666' : '#fff' }, item.isDeleted && { fontStyle: 'italic' }]}>
-                                        {item.text}
-                                    </Text>
-                                    {item.isEdited && !item.isDeleted && <Text style={styles.editedTagTheir}>edited</Text>}
-                                </View>
-                            )}
-                        </TouchableOpacity>
-                    </Animated.View>
-                </View>
-            </View>
+            <MessageItem 
+                item={item} 
+                isMine={isMine} 
+                showTimeHeader={showTimeHeader}
+                swipeOffset={swipeOffset}
+                user={user}
+                otherUser={otherUser}
+                hasReadReceipts={hasReadReceipts}
+                handleLongPress={handleLongPress}
+                formatMessageTime={formatMessageTime}
+            />
         );
     };
 
+const MessageItem = ({ 
+    item, isMine, showTimeHeader, swipeOffset, user, otherUser, hasReadReceipts, handleLongPress, formatMessageTime 
+}) => {
+    if (item.isSystem) {
+        return (
+            <View style={styles.systemMessageContainer}>
+                <Text style={styles.systemMessageText}>{item.text}</Text>
+            </View>
+        );
+    }
+
+    const msgTime = item.createdAt ? (item.createdAt.toDate ? item.createdAt.toDate() : new Date(item.createdAt)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+    const animatedBubbleStyle = useAnimatedStyle(() => {
+        return {
+            transform: [{ translateX: swipeOffset.value }]
+        };
+    });
+
+    const timeRevealRightStyle = useAnimatedStyle(() => {
+        return {
+            opacity: interpolate(swipeOffset.value, [-80, -20], [1, 0], 'clamp'),
+            transform: [{ translateX: interpolate(swipeOffset.value, [-80, 0], [-80, 0], 'clamp') }]
+        };
+    });
+
+    const timeRevealLeftStyle = useAnimatedStyle(() => {
+        return {
+            opacity: interpolate(swipeOffset.value, [20, 80], [0, 1], 'clamp'),
+            transform: [{ translateX: interpolate(swipeOffset.value, [0, 80], [0, 80], 'clamp') }]
+        };
+    });
+
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: '#000' }]}>
+        <View style={styles.messageRowWrapper}>
+            {showTimeHeader && (
+                <Text style={styles.timeHeader}>{formatMessageTime(item.createdAt)}</Text>
+            )}
+            
+            <View style={[styles.swipeContainer, isMine ? { justifyContent: 'flex-end' } : { justifyContent: 'flex-start' }]}>
+                {/* Reveal time on the left when swiping right */}
+                <Animated.View style={[styles.timeRevealLeft, timeRevealLeftStyle]}>
+                    <Text style={styles.revealTimeText}>{msgTime}</Text>
+                </Animated.View>
+
+                <Animated.View style={[
+                    styles.messageBubbleContainer, 
+                    isMine ? styles.myMessageContainer : styles.theirMessageContainer,
+                    animatedBubbleStyle
+                ]}>
+                    <View style={styles.bubbleWrapper}>
+                        <TouchableOpacity 
+                            activeOpacity={0.8}
+                            onLongPress={() => handleLongPress(item)}
+                        >
+                        {item.replyTo && (
+                            <View style={[styles.replyInBubble, isMine ? styles.myReply : styles.theirReply]}>
+                                <Text style={styles.replyInBubbleTitle}>
+                                    {item.replyTo.senderId === user.uid ? 'You' : otherUser?.firstName}
+                                </Text>
+                                <Text style={styles.replyInBubbleText} numberOfLines={1}>{item.replyTo.text}</Text>
+                            </View>
+                        )}
+                        {isMine ? (
+                            <LinearGradient
+                                colors={item.isDeleted ? ['#333', '#222'] : ['#833AB4', '#E1306C']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.myBubble}
+                            >
+                                <Text style={[styles.myMessageText, item.isDeleted && { color: '#666', fontStyle: 'italic' }]}>
+                                    {item.text}
+                                </Text>
+                                {isMine && hasReadReceipts && !item.isDeleted && (
+                                    <View style={styles.readReceiptContainer}>
+                                        <Ionicons 
+                                            name={item.read ? "checkmark-done" : "checkmark"} 
+                                            size={10} 
+                                            color="#fff" 
+                                            style={{ opacity: 0.8 }}
+                                        />
+                                    </View>
+                                )}
+                            </LinearGradient>
+                        ) : (
+                            <View style={[styles.theirBubble, { backgroundColor: item.isDeleted ? '#1a1a1a' : '#262626' }]}>
+                                <Text style={[styles.theirMessageText, { color: item.isDeleted ? '#666' : '#fff' }, item.isDeleted && { fontStyle: 'italic' }]}>
+                                    {item.text}
+                                </Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+
+                    {/* Message Reactions Badge */}
+                    {item.reactions && Object.keys(item.reactions).length > 0 && (
+                        <View style={[
+                            styles.reactionBadgeContainer,
+                            isMine ? styles.myReactionBadge : styles.theirReactionBadge
+                        ]}>
+                            <Text style={styles.reactionBadgeText}>
+                                {Object.values(item.reactions).slice(0, 3).join('')}
+                                {Object.keys(item.reactions).length > 1 && (
+                                    <Text style={styles.reactionCount}> {Object.keys(item.reactions).length}</Text>
+                                )}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            </Animated.View>
+
+                {/* Instagram style reveal on the right for all messages when swiping left */}
+                <Animated.View style={[styles.timeRevealRight, timeRevealRightStyle]}>
+                    <Text style={styles.revealTimeText}>{msgTime}</Text>
+                </Animated.View>
+            </View>
+        </View>
+    );
+};
+
+
+    const onGestureEvent = (event) => {
+        swipeOffset.value = event.nativeEvent.translationX;
+    };
+
+    const onHandlerStateChange = (event) => {
+        if (event.nativeEvent.state === State.END || event.nativeEvent.state === State.CANCELLED) {
+            swipeOffset.value = withSpring(0, { stiffness: 200, damping: 25 });
+        }
+    };
+
+    return (
+        <SafeAreaView style={[styles.container, { backgroundColor: '#000' }]} edges={['top']}>
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.flex}
@@ -286,7 +382,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
             >
                 {/* Instagram Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
                         <Ionicons name="chevron-back" size={28} color="#fff" />
                     </TouchableOpacity>
 
@@ -311,12 +407,11 @@ const ChatDetailScreen = ({ route, navigation }) => {
                         </View>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.actionBtn}>
-                        <Ionicons name="videocam-outline" size={24} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionBtn}>
-                        <Ionicons name="information-circle-outline" size={24} color="#fff" />
-                    </TouchableOpacity>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity style={styles.actionBtn}>
+                            <Ionicons name="information-circle-outline" size={24} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {loading ? (
@@ -327,36 +422,28 @@ const ChatDetailScreen = ({ route, navigation }) => {
                     <PanGestureHandler
                         onGestureEvent={onGestureEvent}
                         onHandlerStateChange={onHandlerStateChange}
-                        activeOffsetX={[-10, 10]}
+                        activeOffsetX={[-20, 20]}
+                        failOffsetY={[-10, 10]}
                     >
-                        <Animated.View style={styles.flex}>
+                        <View style={styles.flex}>
                             <FlatList
                                 ref={flatListRef}
                                 data={messages}
-                                keyExtractor={item => item.id}
                                 renderItem={renderMessage}
+                                keyExtractor={(item) => item.id}
+                                contentContainerStyle={styles.listContent}
                                 inverted
-                                contentContainerStyle={styles.messageList}
                                 showsVerticalScrollIndicator={false}
-                                ListHeaderComponent={<View style={{ height: 10 }} />}
-                                ListFooterComponent={
-                                    <View style={styles.matchIntro}>
-                                        <Image source={{ uri: otherUser?.photos?.[0] }} style={styles.introAvatar} />
-                                        <Text style={styles.introTitle}>You matched with {otherUser?.firstName}</Text>
-                                        <Text style={styles.introDate}>
-                                            {createdAt?.toDate ? createdAt.toDate().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString()}
-                                        </Text>
-                                    </View>
-                                }
+                                removeClippedSubviews={false}
                             />
-                        </Animated.View>
+                        </View>
                     </PanGestureHandler>
                 )}
 
                 {replyingTo && (
                     <View style={styles.replyBanner}>
                         <View style={styles.replyContent}>
-                            <Text style={styles.replyTitle}>Replying to {replyingTo.senderId === user.uid ? 'Yourself' : otherUser?.firstName}</Text>
+                            <Text style={styles.replyTitle}>Replying to {replyingTo.senderId === user?.uid ? 'yourself' : otherUser?.firstName}</Text>
                             <Text style={styles.replyText} numberOfLines={1}>{replyingTo.text}</Text>
                         </View>
                         <TouchableOpacity onPress={() => setReplyingTo(null)}>
@@ -365,25 +452,8 @@ const ChatDetailScreen = ({ route, navigation }) => {
                     </View>
                 )}
 
-                {/* Instagram-style Emoji Bar & Input Area */}
                 <View style={styles.footerContainer}>
-                    <View style={styles.emojiBar}>
-                        {POPULAR_EMOJIS.map(emoji => (
-                            <TouchableOpacity 
-                                key={emoji} 
-                                style={styles.emojiItem}
-                                onPress={() => handleSend(emoji)}
-                            >
-                                <Text style={styles.emojiText}>{emoji}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                    
                     <View style={styles.inputArea}>
-                        <TouchableOpacity style={styles.cameraBtn}>
-                            <Ionicons name="camera" size={24} color="#fff" />
-                        </TouchableOpacity>
-                        
                         <View style={styles.inputWrapper}>
                             <TextInput
                                 style={styles.input}
@@ -393,24 +463,16 @@ const ChatDetailScreen = ({ route, navigation }) => {
                                 onChangeText={handleTextChange}
                                 multiline
                             />
-                            {!inputText && (
-                                <View style={styles.inputActions}>
-                                    <TouchableOpacity style={styles.inputActionBtn}>
-                                        <Ionicons name="mic-outline" size={22} color="#fff" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={styles.inputActionBtn}>
-                                        <Ionicons name="image-outline" size={22} color="#fff" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={styles.inputActionBtn}>
-                                        <Ionicons name="happy-outline" size={22} color="#fff" />
-                                    </TouchableOpacity>
-                                </View>
-                            )}
                         </View>
 
                         {inputText.trim() ? (
-                            <TouchableOpacity onPress={() => handleSend()}>
-                                <Text style={styles.sendText}>{isEditing ? 'Done' : 'Send'}</Text>
+                            <TouchableOpacity onPress={() => handleSend()} style={styles.sendIconBtn}>
+                                <LinearGradient
+                                    colors={[COLORS.primary, '#FF1493']}
+                                    style={styles.sendBadge}
+                                >
+                                    <Ionicons name={isEditing ? "checkmark" : "arrow-up"} size={22} color="white" />
+                                </LinearGradient>
                             </TouchableOpacity>
                         ) : null}
                     </View>
@@ -475,35 +537,35 @@ const ChatDetailScreen = ({ route, navigation }) => {
                     <View style={styles.optionsContainer}>
                         <View style={styles.reactionRow}>
                             {POPULAR_EMOJIS.slice(0, 6).map(emoji => (
-                                <TouchableOpacity key={emoji} style={styles.reactionEmoji}>
+                                <TouchableOpacity key={emoji} style={styles.reactionEmoji} onPress={() => handleReaction(emoji)}>
                                     <Text style={{ fontSize: 24 }}>{emoji}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
                         <View style={styles.optionsMenu}>
-                            <TouchableOpacity style={styles.optionItem} onPress={startReply}>
+                            <TouchableOpacity style={styles.optionItem} onPress={handleReply}>
                                 <Text style={styles.optionText}>Reply</Text>
                                 <Ionicons name="arrow-undo-outline" size={20} color="white" />
                             </TouchableOpacity>
+                            {selectedMessage?.senderId === user?.uid && (
+                                <TouchableOpacity style={styles.optionItem} onPress={handleEdit}>
+                                    <Text style={styles.optionText}>Edit</Text>
+                                    <Ionicons name="create-outline" size={20} color="white" />
+                                </TouchableOpacity>
+                            )}
                             <TouchableOpacity style={styles.optionItem} onPress={handleCopy}>
                                 <Text style={styles.optionText}>Copy</Text>
                                 <Ionicons name="copy-outline" size={20} color="white" />
                             </TouchableOpacity>
                             {selectedMessage?.senderId === user?.uid && (
-                                <TouchableOpacity style={styles.optionItem} onPress={startEdit}>
-                                    <Text style={styles.optionText}>Edit</Text>
-                                    <Ionicons name="pencil-outline" size={20} color="white" />
-                                </TouchableOpacity>
-                            )}
-                            {selectedMessage?.senderId === user?.uid && (
                                 <TouchableOpacity style={styles.optionItem} onPress={() => handleDelete('everyone')}>
-                                    <Text style={[styles.optionText, { color: '#ff4444' }]}>Unsend</Text>
+                                    <Text style={[styles.optionText, { color: '#ff4444' }]}>Delete for Everyone</Text>
                                     <Ionicons name="trash-outline" size={20} color="#ff4444" />
                                 </TouchableOpacity>
                             )}
-                            <TouchableOpacity style={[styles.optionItem, { borderBottomWidth: 0 }]} onPress={() => handleDelete('me')}>
-                                <Text style={styles.optionText}>Delete for Me</Text>
-                                <Ionicons name="trash-outline" size={20} color="white" />
+                            <TouchableOpacity style={styles.optionItem} onPress={() => handleDelete('me')}>
+                                <Text style={[styles.optionText, { color: '#ff4444' }]}>Delete for Me</Text>
+                                <Ionicons name="trash-outline" size={20} color="#ff4444" />
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -514,20 +576,26 @@ const ChatDetailScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
+    container: { flex: 1, backgroundColor: '#000' },
     flex: { flex: 1 },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 15,
-        height: 60,
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
         borderBottomWidth: 0.5,
-        borderBottomColor: 'rgba(255,255,255,0.1)',
+        borderBottomColor: '#262626',
     },
-    backBtn: { padding: 5, marginRight: 10 },
-    headerTitleContainer: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+    backBtn: { padding: 4 },
+    headerTitleContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 10,
+    },
     avatarWrapper: { position: 'relative' },
-    headerAvatar: { width: 36, height: 36, borderRadius: 18 },
+    headerAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#333' },
     onlineStatusDot: {
         position: 'absolute',
         bottom: 0,
@@ -535,70 +603,220 @@ const styles = StyleSheet.create({
         width: 10,
         height: 10,
         borderRadius: 5,
-        backgroundColor: '#00e882',
+        backgroundColor: '#4CAF50',
         borderWidth: 2,
         borderColor: '#000',
     },
     headerText: { marginLeft: 10 },
-    headerName: { fontSize: 16, fontWeight: '700', color: '#fff' },
-    headerSub: { fontSize: 11, color: '#888' },
-    actionBtn: { padding: 8, marginLeft: 5 },
+    headerName: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    headerSub: { color: '#a8a8a8', fontSize: 11, marginTop: 1 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+    actionBtn: { padding: 4 },
+    
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    messageList: { paddingHorizontal: 15, paddingBottom: 20 },
-    matchIntro: { alignItems: 'center', marginVertical: 40 },
-    introAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 15 },
-    introTitle: { fontSize: 18, fontWeight: '800', color: '#fff', textAlign: 'center' },
-    introDate: { fontSize: 11, color: '#555', marginTop: 5 },
-    timeHeader: {
-        alignSelf: 'center',
-        fontSize: 11,
-        color: '#555',
-        fontWeight: '700',
-        marginVertical: 15,
+    listContent: { paddingHorizontal: 12, paddingBottom: 20 },
+    timeHeader: { 
+        alignSelf: 'center', 
+        fontSize: 11, 
+        color: '#8e8e8e', 
+        fontWeight: '600', 
+        marginVertical: 20, 
         textTransform: 'uppercase',
+        letterSpacing: 0.5
     },
-    swipeMessageWrapper: {
-        position: 'relative',
-        justifyContent: 'center',
+    
+    messageRowWrapper: { width: '100%', overflow: 'visible' },
+    swipeContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        overflow: 'visible',
     },
-    hiddenTimeContainer: {
-        position: 'absolute',
-        right: 0,
-        justifyContent: 'center',
-        height: '100%',
-        paddingRight: 10,
+    messageBubbleContainer: {
+        maxWidth: '75%',
+        marginVertical: 1.5,
     },
-    hiddenTimeText: {
-        color: '#555',
-        fontSize: 10,
-        fontWeight: 'bold',
-    },
-    messageBubbleContainer: { marginVertical: 2, maxWidth: '80%' },
     myMessageContainer: { alignSelf: 'flex-end' },
     theirMessageContainer: { alignSelf: 'flex-start' },
-    myBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderBottomRightRadius: 4 },
-    theirBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderBottomLeftRadius: 4 },
-    myMessageText: { color: 'white', fontSize: 15 },
-    theirMessageText: { color: '#fff', fontSize: 15 },
-    systemMessageContainer: {
-        alignSelf: 'center',
-        marginVertical: 15,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 15,
+    
+    myBubble: { 
+        paddingHorizontal: 16, 
+        paddingVertical: 10, 
+        borderRadius: 22,
+        borderBottomRightRadius: 22,
     },
+    theirBubble: { 
+        paddingHorizontal: 16, 
+        paddingVertical: 10, 
+        borderRadius: 22,
+        borderBottomLeftRadius: 22,
+    },
+    
+    myMessageText: { color: '#fff', fontSize: 15, lineHeight: 20 },
+    theirMessageText: { color: '#fff', fontSize: 15, lineHeight: 20 },
+    
+    timeRevealLeft: {
+        position: 'absolute',
+        left: -80,
+        width: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    timeRevealRight: {
+        position: 'absolute',
+        right: -80,
+        width: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    revealTimeText: {
+        fontSize: 10,
+        color: '#8e8e8e',
+        fontWeight: '500',
+    },
+    
+    bubbleWrapper: {
+        flexDirection: 'column',
+    },
+    reactionBadgeContainer: {
+        position: 'absolute',
+        bottom: -10,
+        backgroundColor: '#262626',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#000',
+        flexDirection: 'row',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
+        elevation: 3,
+    },
+    myReactionBadge: {
+        right: 0,
+    },
+    theirReactionBadge: {
+        left: 0,
+    },
+    reactionBadgeText: {
+        fontSize: 12,
+    },
+    reactionCount: {
+        fontSize: 10,
+        color: '#fff',
+        marginLeft: 2,
+        fontWeight: '700',
+    },
+
+    footerContainer: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        backgroundColor: '#000',
+    },
+    inputArea: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#000',
+    },
+    inputWrapper: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1a1a1a',
+        borderRadius: 25,
+        paddingHorizontal: 15,
+        paddingVertical: 8,
+        minHeight: 44,
+        borderWidth: 0.5,
+        borderColor: '#363636',
+    },
+    input: {
+        flex: 1,
+        color: '#fff',
+        fontSize: 15,
+        paddingVertical: 0,
+        marginHorizontal: 10,
+    },
+    sendIconBtn: { marginLeft: 12 },
+    sendBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    
+    replyBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#121212',
+        padding: 12,
+        borderTopWidth: 0.5,
+        borderTopColor: '#262626',
+    },
+    replyContent: { flex: 1 },
+    replyTitle: { color: '#8e8e8e', fontSize: 11, fontWeight: '700' },
+    replyText: { color: '#fff', fontSize: 13, marginTop: 2 },
+    
+    editingBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#121212',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+    },
+    editingText: { color: '#8e8e8e', fontSize: 12 },
+    cancelEdit: { color: '#FF3366', fontSize: 12, fontWeight: '700' },
+    
+    readReceiptContainer: {
+        position: 'absolute',
+        bottom: 4,
+        right: 8,
+    },
+    
+    optionsOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+    optionsContent: {
+        backgroundColor: '#262626',
+        borderTopLeftRadius: 15,
+        borderTopRightRadius: 15,
+        paddingBottom: 40,
+    },
+    optionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 18,
+        borderBottomWidth: 0.5,
+        borderBottomColor: '#363636',
+    },
+    optionText: { color: '#fff', fontSize: 16, marginLeft: 15 },
+    deleteText: { color: '#ED4956' },
+    
+    viewerOverlay: { flex: 1, backgroundColor: '#000' },
+    viewerSafe: { flex: 1 },
+    viewerHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 16,
+    },
+    viewerName: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    viewerImageContainer: { flex: 1, justifyContent: 'center' },
+    fullImage: { width: '100%', height: '100%' },
+    viewerFooter: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        paddingVertical: 20,
+        borderTopWidth: 0.5,
+        borderTopColor: '#262626',
+    },
+    viewerAction: { alignItems: 'center', gap: 6 },
+    viewerActionText: { color: '#fff', fontSize: 12 },
+    systemMessageContainer: { alignSelf: 'center', marginVertical: 15, backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 },
     systemMessageText: { fontSize: 11, color: '#666' },
-    footerContainer: { paddingBottom: Platform.OS === 'ios' ? 30 : 15, backgroundColor: '#000' },
-    emojiBar: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 8, paddingHorizontal: 10 },
-    emojiItem: { padding: 5 },
-    emojiText: { fontSize: 24 },
-    inputArea: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 10 },
-    cameraBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FF3366', justifyContent: 'center', alignItems: 'center' },
-    inputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#262626', borderRadius: 20, paddingHorizontal: 12, minHeight: 40 },
-    input: { flex: 1, color: '#fff', fontSize: 15, paddingVertical: 8 },
-    inputActions: { flexDirection: 'row', gap: 12 },
-    sendText: { color: '#0EA5E9', fontWeight: '700', fontSize: 16, marginRight: 5 },
+    sendIconBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+    sendBadge: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
     replyInBubble: { padding: 8, borderRadius: 12, marginBottom: 4, opacity: 0.8 },
     myReply: { backgroundColor: 'rgba(0,0,0,0.2)', borderLeftWidth: 2, borderLeftColor: '#fff' },
     theirReply: { backgroundColor: 'rgba(255,255,255,0.05)', borderLeftWidth: 2, borderLeftColor: '#FF3366' },
@@ -627,7 +845,12 @@ const styles = StyleSheet.create({
     viewerAction: { alignItems: 'center', gap: 5 },
     viewerActionText: { color: 'white', fontSize: 12 },
     editedTag: { fontSize: 10, color: 'rgba(255,255,255,0.5)', alignSelf: 'flex-end', marginTop: 2 },
-    editedTagTheir: { fontSize: 10, color: 'rgba(255,255,255,0.3)', alignSelf: 'flex-start', marginTop: 2 }
+    editedTagTheir: { fontSize: 10, color: 'rgba(255,255,255,0.3)', alignSelf: 'flex-start', marginTop: 2 },
+    readReceiptContainer: {
+        alignSelf: 'flex-end',
+        marginTop: 2,
+        marginRight: -2,
+    }
 });
 
 export default ChatDetailScreen;

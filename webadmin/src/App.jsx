@@ -9,6 +9,8 @@ import Support from './pages/Support'
 import Notifications from './pages/Notifications'
 import Safety from './pages/Safety'
 import Verifications from './pages/Verifications'
+import Ads from './pages/Ads'
+import Companies from './pages/Companies'
 import Header from './components/Header'
 
 function App() {
@@ -28,6 +30,8 @@ function App() {
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/safety" element={<Safety />} />
             <Route path="/verifications" element={<Verifications />} />
+            <Route path="/ads" element={<Ads />} />
+            <Route path="/companies" element={<Companies />} />
           </Routes>
         </main>
       </div>

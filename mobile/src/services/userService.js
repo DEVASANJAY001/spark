@@ -24,7 +24,9 @@ export const userService = {
             const discoveryFields = [
                 'firstName', 'birthday', 'gender', 'interestedIn',
                 'lookingFor', 'city', 'isProfileComplete', 'premiumTier',
-                'hasPremium', 'locationEnabled', 'username', 'photos'
+                'hasPremium', 'locationEnabled', 'username', 'photos',
+                'selectedCategory', 'bio', 'jobTitle', 'company', 'height',
+                'pronouns', 'prompts', 'quizzes'
             ];
             const discoveryData = {};
             discoveryFields.forEach(field => {
@@ -74,13 +76,29 @@ export const userService = {
                 const userData = snapshot.val();
 
                 // Hydrate photos if they exist
+                const mergedPhotos = new Array(9).fill(null);
                 if (photoSnap.exists()) {
                     const rtdbPhotos = photoSnap.val();
-                    const mergedPhotos = [];
                     for (let i = 0; i < 9; i++) {
-                        if (rtdbPhotos[`photo_${i}`]) mergedPhotos.push(rtdbPhotos[`photo_${i}`]);
+                        if (rtdbPhotos[`photo_${i}`]) {
+                            mergedPhotos[i] = rtdbPhotos[`photo_${i}`];
+                        }
                     }
-                    userData.photos = mergedPhotos;
+                }
+                userData.photos = mergedPhotos;
+                userData.uid = uid;
+
+                // Dynamically fetch and sync premium features from the 'plans' collection
+                if (userData.premiumTier) {
+                    try {
+                        const planRef = doc(db, 'plans', userData.premiumTier.toLowerCase());
+                        const planSnap = await getDoc(planRef);
+                        if (planSnap.exists()) {
+                            userData.premiumFeatures = planSnap.data().features || [];
+                        }
+                    } catch (err) {
+                        console.error('[UserService] Error syncing plan features:', err);
+                    }
                 }
 
                 return userData;
@@ -108,7 +126,11 @@ export const userService = {
             });
 
             // Secondary sync to Firestore for indexed fields
-            const discoveryFields = ['firstName', 'birthday', 'gender', 'interestedIn', 'lookingFor', 'city'];
+            const discoveryFields = [
+                'firstName', 'birthday', 'gender', 'interestedIn',
+                'lookingFor', 'city', 'bio', 'jobTitle', 'company',
+                'height', 'pronouns'
+            ];
             if (discoveryFields.includes(field)) {
                 const userRef = doc(db, 'users', uid);
                 await updateDoc(userRef, {
@@ -139,18 +161,43 @@ export const userService = {
      */
     removePhoto: async (uid, index) => {
         try {
+            // 1. Remove the specific photo from RTDB
             const photoRef = rtdbRef(rtdb, `users/${uid}/photos/photo_${index}`);
             await set(photoRef, null);
-            console.log(`✅ Photo ${index} removed from RTDB for ${uid}`);
 
-            // Update completion status in Firestore
+            // 2. Fetch all remaining photos to perform auto-shifting
+            const photosRef = rtdbRef(rtdb, `users/${uid}/photos`);
+            const snap = await get(photosRef);
+
+            let updatedPhotos = [];
+            if (snap.exists()) {
+                const currentPhotos = snap.val();
+                // Filter out the nulls and compact the list
+                for (let i = 0; i < 9; i++) {
+                    if (currentPhotos[`photo_${i}`]) {
+                        updatedPhotos.push(currentPhotos[`photo_${i}`]);
+                    }
+                }
+            }
+
+            // 3. Write back the compacted list to RTDB (ensures no gaps)
+            const cleanPhotos = {};
+            for (let i = 0; i < 9; i++) {
+                cleanPhotos[`photo_${i}`] = updatedPhotos[i] || null;
+            }
+            await set(photosRef, cleanPhotos);
+
+            // 4. Update both completion and the actual photos array in Firestore
             const fullProfile = await userService.getProfile(uid);
             const completion = userService.calculateCompletion(fullProfile);
             const userRef = doc(db, 'users', uid);
             await updateDoc(userRef, {
+                photos: fullProfile.photos || [],
                 profileCompletion: completion,
                 updatedAt: serverTimestamp(),
             });
+
+            console.log(`✅ Photo ${index} removed and grid auto-shifted for ${uid}`);
         } catch (error) {
             console.error('Error in removePhoto:', error);
             throw error;
@@ -162,23 +209,33 @@ export const userService = {
      */
     calculateCompletion: (profile) => {
         if (!profile) return 0;
-        const fields = [
-            'firstName', 'birthday', 'gender', 'interestedIn',
-            'lookingFor', 'photos', 'bio'
-        ];
-        let filled = 0;
-        fields.forEach(field => {
-            if (profile[field]) {
-                if (Array.isArray(profile[field])) {
-                    if (profile[field].length > 0) filled++;
-                } else if (typeof profile[field] === 'string' && profile[field].trim() !== '') {
-                    filled++;
-                } else if (profile[field]) {
-                    filled++;
-                }
-            }
-        });
-        return Math.round((filled / fields.length) * 100);
+        let score = 0;
+
+        // 1. Identity (Max 20%)
+        if (profile.firstName) score += 5;
+        if (profile.birthday) score += 5;
+        if (profile.gender) score += 5;
+        if (profile.city) score += 5;
+
+        // 2. Visuals (Max 40%) - 10% per photo for first 4 photos
+        const photos = Array.isArray(profile.photos) ? profile.photos.filter(p => p != null) : [];
+        score += Math.min(photos.length * 10, 40);
+
+        // 3. About Me (Max 20%)
+        if (profile.bio && profile.bio.length > 10) score += 10;
+        if (profile.jobTitle) score += 5;
+        if (profile.school || profile.education) score += 5;
+
+        // 4. Discovery & Tags (Max 20%)
+        if (profile.interestedIn) score += 5;
+        if (profile.lookingFor) score += 5;
+        if (Array.isArray(profile.interests) && profile.interests.length >= 3) {
+            score += 10;
+        } else if (Array.isArray(profile.interests) && profile.interests.length > 0) {
+            score += 5;
+        }
+
+        return Math.min(score, 100);
     },
 
     /**
@@ -301,7 +358,7 @@ export const userService = {
         const unsubscribeProfile = onValue(profileRef, async (snapshot) => {
             if (snapshot.exists()) {
                 const userData = snapshot.val();
-                
+
                 // For a complete profile object, we need to fetch photos too
                 // We'll trigger a separate fetch for photos to keep it hydrated
                 // or just wait for the next callback if photos are updated separately.
@@ -315,7 +372,7 @@ export const userService = {
                     }
                     userData.photos = mergedPhotos;
                 }
-                
+
                 callback(userData);
             }
         });
@@ -327,14 +384,67 @@ export const userService = {
      * Check if a user has access to a specific feature based on their tier
      */
     canUseFeature: (profile, feature) => {
-        return true; // All features unlocked for now
+        if (!profile) return false;
+
+        // 1. Check if the user is an admin (Admins bypass all gates)
+        if (profile.role === 'admin') return true;
+
+        const features = profile.premiumFeatures || [];
+        const tier = (profile.premiumTier || '').toLowerCase();
+
+        // 2. Direct Feature Array Check (Primary database-driven logic)
+        if (features.includes(feature)) return true;
+
+        // 3. Fallback Mapping (Ensures INSTANT update if features aren't synced yet)
+        const tierEnforcements = {
+            'silver': ['see_likes', 'unlimited_swipes', 'rewind', '5_super_likes_day'],
+            'gold': ['see_likes', 'unlimited_swipes', 'rewind', '5_super_likes_day', 'top_picks', 'passport', '1_boost_month', 'ad_free_basic'],
+            'platinum': ['see_likes', 'unlimited_swipes', 'rewind', '5_super_likes_day', 'top_picks', 'passport', '1_boost_month', 'ad_free_total', 'priority_likes', 'message_before_match', 'incognito', 'advanced_filters']
+        };
+
+        if (tier && tierEnforcements[tier]?.includes(feature)) return true;
+
+        // 4. Fallback/Alias Check for common features
+        const featureAliases = {
+            'daily_boost': '1_boost_month',
+            'no_ads': 'ad_free_total',
+            'passport': 'passport_mode'
+        };
+        const alias = featureAliases[feature];
+        if (alias && features.includes(alias)) return true;
+
+        return false;
+    },
+    
+    /**
+     * Get the active chat capacity for a given tier
+     */
+    getChatLimit: (tier) => {
+        const limits = {
+            'free': 3,
+            'silver': 8,
+            'gold': 15,
+            'platinum': Infinity
+        };
+        const key = (tier || 'free').toLowerCase();
+        return limits[key] || 3;
     },
 
     /**
      * Track and limit daily swipes for free users
      */
     checkSwipeLimit: async (uid, profile) => {
-        return true; // No limits for now
+        if (!profile) return false;
+
+        // Premium users have no limits
+        if (profile.hasPremium || profile.premiumTier) return true;
+
+        const today = new Date().toISOString().split('T')[0];
+        const lastSwipeDate = profile.lastSwipeDate || '';
+        const dailyCount = lastSwipeDate === today ? (profile.dailySwipeCount || 0) : 0;
+
+        // Free limit: 50 swipes per day
+        return dailyCount < 50;
     },
 
     incrementSwipeCount: async (uid, profile) => {
@@ -355,17 +465,17 @@ export const userService = {
      */
     calculateDistance: (lat1, lon1, lat2, lon2) => {
         if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-        
+
         const R = 6371; // Earth's radius in km
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = 
-            Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distance = R * c;
-        
+
         return Math.round(distance * 100) / 100; // Round to 2 decimal places
     },
 
@@ -374,61 +484,49 @@ export const userService = {
      */
     updateLastSessionInfo: async (uid) => {
         try {
-            // 1. Get IP and Geo info with fallback
             let geoData = null;
             try {
                 const response = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(5000) });
                 if (response.ok && response.headers.get('content-type')?.includes('json')) {
                     geoData = await response.json();
                 }
-            } catch (e) {
-                // Silently try fallback
-            }
+            } catch (e) { }
 
             if (!geoData || geoData.error) {
-                // Fallback to ip-api.com (no https on free tier, but okay for geo)
                 const response = await fetch('http://ip-api.com/json/', { signal: AbortSignal.timeout(5000) });
                 if (response.ok) {
                     const data = await response.json();
                     if (data.status === 'success') {
-                        geoData = {
-                            ip: data.query,
-                            latitude: data.lat,
-                            longitude: data.lon,
-                            city: data.city,
-                            region: data.regionName
-                        };
+                        geoData = { ip: data.query, latitude: data.lat, longitude: data.lon, city: data.city, region: data.regionName };
                     }
                 }
             }
 
             if (geoData && !geoData.error) {
-                const { ip, latitude: lat, longitude: lon, city, region } = geoData;
-
-                // 2. Update Firestore & RTDB with location
+                const { ip, latitude, longitude, city, region } = geoData;
+                const location = { latitude, longitude, city, region, updatedAt: Date.now() };
                 const userRef = doc(db, 'users', uid);
-                const location = {
-                    latitude: lat,
-                    longitude: lon,
-                    city: city,
-                    region: region,
-                    updatedAt: Date.now()
-                };
-
-                await updateDoc(userRef, {
-                    lastIp: ip,
-                    location: location,
-                    lastSessionAt: serverTimestamp()
-                });
-
-                // Also update RTDB profile location for faster access
+                await updateDoc(userRef, { lastIp: ip, location, lastSessionAt: serverTimestamp() });
                 const profileLocRef = rtdbRef(rtdb, `users/${uid}/profile/location`);
                 await set(profileLocRef, location);
-
-                console.log(`[UserService] Session & Geo updated for ${uid}: ${ip} (${city})`);
             }
+        } catch (error) { }
+    },
+
+    /**
+     * Update user's high-precision device location
+     */
+    updateDeviceLocation: async (uid, coords) => {
+        try {
+            const { latitude, longitude } = coords;
+            const location = { latitude, longitude, updatedAt: Date.now() };
+            const userRef = doc(db, 'users', uid);
+            await updateDoc(userRef, { location, lastSessionAt: serverTimestamp() });
+            const profileLocRef = rtdbRef(rtdb, `users/${uid}/profile/location`);
+            await set(profileLocRef, location);
+            console.log(`[UserService] 📍 Device location updated for ${uid}`);
         } catch (error) {
-            // Silent fail to not disrupt user experience
+            console.error('[UserService] Error updating device location:', error);
         }
     }
 };

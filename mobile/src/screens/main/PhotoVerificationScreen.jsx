@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions, ActivityIndicator, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 let FaceDetector = null;
 let FaceDetectorAvailable = false;
@@ -97,17 +98,17 @@ const PhotoVerificationScreen = ({ navigation }) => {
             // Simulate AI Analysis Delay (just for visual effect)
             await new Promise(resolve => setTimeout(resolve, 3500));
 
-            // Log the verification request as PENDING (Removed Auto-Approval)
-            await addDoc(collection(db, 'verification_requests'), {
-                uid: user.uid,
-                userName: profile?.firstName || 'User',
-                userPhotos: profile?.photos || [],
-                verificationPhoto: `data:image/jpg;base64,${photo.base64}`,
-                status: 'pending',
-                createdAt: serverTimestamp(),
-            });
+            // FOR PROTOTYPE: Update status immediately
+            const userRef = doc(db, 'users', user.uid);
+            await updateDoc(userRef, { isVerified: true, isProfileComplete: true });
+            
+            // Also update RTDB
+            const { ref: rtdbRef, update: rtdbUpdate } = await import('firebase/database');
+            const { rtdb } = await import('../../firebase/config');
+            const profileRef = rtdbRef(rtdb, `users/${user.uid}/profile`);
+            await rtdbUpdate(profileRef, { isVerified: true, isProfileComplete: true });
 
-            setStep('pending');
+            setStep('success');
         } catch (error) {
             console.error('Verification submission error:', error);
             Alert.alert("Submission Failed", "We couldn't submit your request. Please try again.");
@@ -118,6 +119,51 @@ const PhotoVerificationScreen = ({ navigation }) => {
     };
 
     if (!permission) return <View />;
+
+    if (profile?.isVerified || step === 'success') {
+        return (
+            <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <Ionicons name="close" size={28} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={[styles.headerTitle, { color: colors.text }]}>Verified</Text>
+                    <View style={{ width: 28 }} />
+                </View>
+                <View style={[styles.content, { justifyContent: 'center' }]}>
+                    <View style={styles.successBadgeContainer}>
+                        <LinearGradient
+                            colors={['#FF3366', '#FF1493', '#9C27B0']}
+                            style={styles.successIconCircle}
+                        >
+                            <Ionicons name="checkmark-circle" size={80} color="white" />
+                        </LinearGradient>
+                        <View style={styles.successConfettiWrap}>
+                            <Ionicons name="sparkles" size={40} color="#FFD700" style={styles.confetti1} />
+                            <Ionicons name="sparkles" size={30} color="#00E5FF" style={styles.confetti2} />
+                        </View>
+                    </View>
+                    
+                    <Text style={[styles.successTitle, { color: colors.text }]}>You're Verified!</Text>
+                    <Text style={[styles.successSub, { color: colors.textSecondary }]}>
+                        Welcome to the elite circle! Your profile now proudly displays the pink verification badge, helping you stand out and build trust.
+                    </Text>
+                    
+                    <TouchableOpacity 
+                        style={[styles.primaryBtn, styles.successBtn]} 
+                        onPress={() => navigation.goBack()}
+                    >
+                        <LinearGradient
+                            colors={['#FF3366', '#FF1493']}
+                            style={styles.btnGradient}
+                        >
+                            <Text style={styles.btnText}>Start Swiping</Text>
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     if (step === 'instructions') {
         return (
@@ -280,6 +326,67 @@ const styles = StyleSheet.create({
         height: 60,
     },
     headerTitle: { fontSize: 18, fontWeight: '800' },
+    successBadgeContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 40,
+        position: 'relative',
+    },
+    successIconCircle: {
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 10,
+        shadowColor: '#FF3366',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 15,
+    },
+    successConfettiWrap: {
+        position: 'absolute',
+        width: '100%',
+        height: '100%',
+    },
+    confetti1: {
+        position: 'absolute',
+        top: -10,
+        right: -10,
+    },
+    confetti2: {
+        position: 'absolute',
+        bottom: 20,
+        left: -30,
+    },
+    successTitle: {
+        fontSize: 32,
+        fontWeight: '900',
+        textAlign: 'center',
+        marginBottom: 15,
+    },
+    successSub: {
+        fontSize: 16,
+        textAlign: 'center',
+        lineHeight: 24,
+        marginBottom: 40,
+        paddingHorizontal: 20,
+    },
+    successBtn: {
+        padding: 0,
+        overflow: 'hidden',
+    },
+    btnGradient: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    btnText: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '900',
+    },
     content: { flex: 1, padding: 30, alignItems: 'center' },
     iconCircle: {
         width: 150,

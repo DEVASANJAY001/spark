@@ -133,9 +133,27 @@ const UserProfileScreen = ({ route, navigation }) => {
                 <TouchableOpacity style={[styles.actionCircle, { borderColor: '#FF3366' }]}>
                     <Ionicons name="close" size={30} color="#FF3366" />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.messageBtn, { backgroundColor: BRAND_COLORS.blue }]}>
+                <TouchableOpacity 
+                    style={[
+                        styles.messageBtn, 
+                        { backgroundColor: userService.canUseFeature(profile, 'message_before_match') ? BRAND_COLORS.blue : '#333' }
+                    ]}
+                    onPress={() => {
+                        if (userService.canUseFeature(profile, 'message_before_match')) {
+                            // Message logic
+                            const matchId = [profile.id, userId].sort().join('_');
+                            navigation.navigate('Chat', { screen: 'ChatDetail', params: { matchId, otherUser: profile } });
+                        } else {
+                            Alert.alert('Platinum Feature', 'Upgrade to Platinum to message users before matching!', [
+                                { text: 'Later' },
+                                { text: 'Upgrade', onPress: () => navigation.navigate('Subscriptions') }
+                            ]);
+                        }
+                    }}
+                >
                     <Ionicons name="chatbubble" size={24} color="white" />
                     <Text style={styles.messageBtnText}>Message</Text>
+                    {!userService.canUseFeature(profile, 'message_before_match') && <Ionicons name="lock-closed" size={14} color="white" style={{ marginLeft: 5 }} />}
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionCircle, { borderColor: '#00FF88' }]}>
                     <Ionicons name="heart" size={30} color="#00FF88" />

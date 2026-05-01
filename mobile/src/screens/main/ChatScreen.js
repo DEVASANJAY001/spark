@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, FlatList, TouchableOpacity, Image, TextInput, ActivityIndicator, Platform, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, FlatList, TouchableOpacity, Image, TextInput, ActivityIndicator, Platform, ScrollView, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, LAYOUT } from '../../constants/theme';
@@ -7,6 +7,10 @@ import { useTheme } from '../../context/ThemeContext';
 import useAuth from '../../hooks/useAuth';
 import { chatService } from '../../services/chatService';
 import { LinearGradient } from 'expo-linear-gradient';
+import AdBanner from '../../components/AdBanner';
+
+import { userService } from '../../services/userService';
+import { Alert } from 'react-native';
 
 const ChatScreen = ({ navigation }) => {
     const { colors, isDark } = useTheme();
@@ -32,10 +36,35 @@ const ChatScreen = ({ navigation }) => {
         }
     }, [user]);
 
+    const handleChatPress = (match) => {
+        // 1. Check if it's already an active conversation
+        const isActive = conversations.some(c => c.id === match.id);
+        if (isActive) {
+            navigation.navigate('ChatDetail', { matchId: match.id, otherUser: match.otherUser, createdAt: match.createdAt });
+            return;
+        }
+
+        // 2. Check limits for NEW conversations
+        const limit = userService.getChatLimit(profile?.premiumTier);
+        if (conversations.length >= limit) {
+            Alert.alert(
+                'Chat Limit Reached',
+                `Your current plan allows for ${limit} active conversations. Upgrade to unlock more!`,
+                [
+                    { text: 'Later', style: 'cancel' },
+                    { text: 'Upgrade', onPress: () => navigation.navigate('Subscriptions') }
+                ]
+            );
+            return;
+        }
+
+        navigation.navigate('ChatDetail', { matchId: match.id, otherUser: match.otherUser, createdAt: match.createdAt });
+    };
+
     const renderNewMatch = ({ item }) => (
         <TouchableOpacity
             style={styles.newMatchCard}
-            onPress={() => navigation.navigate('ChatDetail', { matchId: item.id, otherUser: item.otherUser, createdAt: item.createdAt })}
+            onPress={() => handleChatPress(item)}
         >
             <View style={styles.newMatchAvatarWrap}>
                 <Image 
@@ -45,7 +74,7 @@ const ChatScreen = ({ navigation }) => {
                 {item.otherUser?.isRecentlyActive && <View style={[styles.activeDot, { borderColor: colors.background }]} />}
             </View>
             <Text style={[styles.newMatchName, { color: colors.text }]} numberOfLines={1}>
-                {item.otherUser?.firstName}
+                {item.otherUser?.firstName?.split(',')[0]}
             </Text>
         </TouchableOpacity>
     );
@@ -57,29 +86,29 @@ const ChatScreen = ({ navigation }) => {
         return (
             <TouchableOpacity
                 key={item.id}
-                style={[styles.messageRow, { backgroundColor: colors.surface }]}
-                onPress={() => navigation.navigate('ChatDetail', { matchId: item.id, otherUser: item.otherUser, createdAt: item.createdAt })}
+                style={styles.messageRow}
+                onPress={() => handleChatPress(item)}
             >
                 <View style={styles.avatarContainer}>
                     <Image 
                         source={{ uri: item.otherUser?.photos?.[0] || 'https://picsum.photos/100' }} 
-                        style={[styles.avatar, { backgroundColor: colors.background }]} 
+                        style={styles.avatar} 
                     />
-                    {item.otherUser?.isRecentlyActive && <View style={[styles.onlineDot, { borderColor: colors.surface }]} />}
+                    {item.otherUser?.isRecentlyActive && <View style={styles.onlineDot} />}
                 </View>
                 
                 <View style={styles.messageContent}>
                     <View style={styles.messageHeader}>
                         <Text style={[styles.messageName, { color: colors.text }, item.unread && styles.unreadText]} numberOfLines={1}>
-                            {item.otherUser?.firstName}
+                            {item.otherUser?.firstName?.split(',')[0]}
                         </Text>
                         <Text style={[styles.messageTime, { color: colors.textSecondary }]}>
                             {timeStr}
                         </Text>
                     </View>
                     <View style={styles.previewRow}>
-                        <Text style={[styles.messagePreview, { color: colors.textSecondary }, item.unread && { color: colors.text, fontWeight: '700' }]} numberOfLines={1}>
-                            {item.lastMessage || 'Sent a photo'}
+                        <Text style={[styles.messagePreview, { color: item.unread ? colors.text : colors.textSecondary }, item.unread && { fontWeight: '700' }]} numberOfLines={1}>
+                            {item.lastMessage}
                         </Text>
                         {item.unread && <View style={[styles.unreadBadge, { backgroundColor: COLORS.primary }]} />}
                     </View>
@@ -156,6 +185,11 @@ const ChatScreen = ({ navigation }) => {
                     </View>
                 )}
 
+                {/* Non-intrusive Highlighted Ad in Chats */}
+                <View style={{ paddingHorizontal: 20 }}>
+                    <AdBanner placement="chats_top" style={{ height: 120, borderRadius: 25 }} />
+                </View>
+
                 {/* Conversation List */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
@@ -183,6 +217,8 @@ const ChatScreen = ({ navigation }) => {
                         </View>
                     )}
                 </View>
+
+                {/* Removed Subscription Lock Overlay - Messaging is now Free */}
             </ScrollView>
         </SafeAreaView>
     );
@@ -317,28 +353,28 @@ const styles = StyleSheet.create({
     messageRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 15,
-        borderRadius: 24,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        paddingVertical: 12,
+        paddingHorizontal: 20,
     },
     avatarContainer: {
         position: 'relative',
     },
     avatar: {
-        width: 64,
-        height: 64,
-        borderRadius: 22,
+        width: 60,
+        height: 60,
+        borderRadius: 30, // Fully round like Instagram
+        backgroundColor: '#1a1a1a',
     },
     onlineDot: {
         position: 'absolute',
-        bottom: -2,
-        right: -2,
-        width: 16,
-        height: 16,
-        borderRadius: 8,
+        bottom: 2,
+        right: 2,
+        width: 14,
+        height: 14,
+        borderRadius: 7,
         backgroundColor: '#00e882',
-        borderWidth: 3,
+        borderWidth: 2,
+        borderColor: '#000',
     },
     messageContent: {
         flex: 1,
@@ -413,6 +449,54 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 16,
         fontWeight: '800',
+    },
+    lockCard: {
+        width: '100%',
+        padding: 30,
+        borderRadius: 30,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    lockIconCircle: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    lockTitle: {
+        fontSize: 24,
+        fontWeight: '900',
+        marginBottom: 10,
+        textAlign: 'center',
+    },
+    lockText: {
+        fontSize: 15,
+        textAlign: 'center',
+        lineHeight: 22,
+        marginBottom: 30,
+        fontWeight: '500',
+    },
+    upgradeBtn: {
+        width: '100%',
+        paddingVertical: 18,
+        borderRadius: 18,
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    upgradeBtnText: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '900',
+    },
+    maybeLaterBtn: {
+        paddingVertical: 10,
+    },
+    maybeLaterText: {
+        fontSize: 15,
+        fontWeight: '700',
     }
 });
 

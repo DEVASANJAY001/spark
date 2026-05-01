@@ -25,18 +25,75 @@ export const LEGAL_CONTENT = {
     },
     privacy_policy: {
         title: 'Privacy Policy',
-        content: `Your privacy matters to us. This Privacy Policy explains how Spark collections, uses, and shares your personal information.\n\nWe are committed to protecting your data and giving you control over your privacy settings.`
-    },
-    privacy_preferences: {
-        title: 'Privacy Preferences',
-        content: `Manage how your data is used on Spark. You can choose to opt-out of personalized ads, manage your visibility in discovery, and control who can see your active status.`
-    },
-    licenses: {
-        title: 'Licenses',
-        content: `Spark uses open-source software and third-party libraries. This page lists the licenses for the software we use to build the best social experience for you.`
+        content: `Last Updated: May 1, 2026
+
+1. INTRODUCTION
+Welcome to Spark. We value your privacy and are committed to protecting your personal data. This policy explains how we handle your information.
+
+2. DATA WE COLLECT
+- Profile Information: Name, age, gender, and interests provided during signup.
+- Media: Photos and videos you upload to your profile.
+- Location: Real-time geolocation to facilitate matches in your area.
+- Usage Data: Information on how you interact with other users and features.
+
+3. HOW WE USE YOUR DATA
+- Matchmaking: Using your preferences and location to find compatible partners.
+- Safety: Monitoring for fraudulent or harmful activity to keep the community secure.
+- Communication: Facilitating messages and notifications between matched users.
+
+4. DATA SHARING
+We do not sell your personal data. We share information only with service providers (like Firebase) necessary to run the application or when required by law.
+
+5. YOUR RIGHTS
+You have the right to access, update, or delete your information at any time through the application settings.`
     },
     terms_of_service: {
         title: 'Terms of Service',
-        content: `By using Spark, you agree to our Terms of Service. These terms govern your use of our app and services, including your responsibilities as a user and our rights as a service provider.`
+        content: `Last Updated: May 1, 2026
+
+1. ELIGIBILITY
+You must be at least 18 years old to create an account on Spark. By using the app, you represent and warrant that you meet this requirement.
+
+2. USER CONDUCT
+Users agree not to:
+- Impersonate any person or entity.
+- Harass, bully, or intimidate other users.
+- Post explicit, offensive, or illegal content.
+- Use the app for commercial or spam purposes.
+
+3. SUBSCRIPTIONS
+Premium plans are billed in advance. While we provide access to advanced features, we do not guarantee specific outcomes or matches.
+
+4. TERMINATION
+We reserve the right to suspend or terminate accounts that violate these terms or engage in behavior harmful to the community.`
+    },
+    refund_policy: {
+        title: 'Return & Refund Policy',
+        content: `Last Updated: May 1, 2026
+
+1. NO REFUND POLICY
+All transactions on Spark, including subscriptions, boosts, and super-likes, are final. We do not provide refunds or credits for any partially used membership periods or unused digital items.
+
+2. FAILED TRANSACTIONS
+If a payment fails but funds are deducted from your account, the amount will be automatically refunded to your original payment method by your bank within 5-7 working days.
+
+3. BILLING DISPUTES
+If you believe there has been a billing error, please do not file a chargeback immediately. Instead, reach out to us through the 'Help & Support' section in the app for a faster resolution.
+
+4. CONTACT SUPPORT
+For any payment-related inquiries, please use the Help and Support feature in settings to connect with our dedicated billing team.`
+    },
+    about_davns: {
+        title: 'About DAVNS Industries',
+        content: `DAVNS INDUSTRIES is a forward-thinking technology firm dedicated to building the next generation of social connectivity tools.
+
+OUR WORK ON SPARK
+Spark is our flagship social platform, engineered with precision to bridge the gap between digital interaction and meaningful real-world relationships. Our team of expert developers and designers at DAVNS Industries works tirelessly to ensure that Spark remains secure, fast, and aesthetically premium.
+
+TECHNOLOGY & INNOVATION
+We utilize state-of-the-art encryption and AI-driven matchmaking algorithms to provide a superior user experience. At DAVNS Industries, we believe that technology should serve humanity by fostering genuine connections.
+
+CORPORATE MISSION
+Our mission is to create digital environments where safety, privacy, and user experience are never compromised. Spark is a testament to our commitment to quality and innovation in the social tech space.`
     }
 };

@@ -9,7 +9,9 @@ import {
   Bell,
   Flame,
   ShieldAlert,
-  ShieldCheck
+  ShieldCheck,
+  Megaphone,
+  Building2
 } from 'lucide-react'
 
 const Sidebar = () => {
@@ -23,6 +25,8 @@ const Sidebar = () => {
     { name: 'Notifications', icon: Bell, path: '/notifications' },
     { name: 'Safety', icon: ShieldAlert, path: '/safety' },
     { name: 'Verifications', icon: ShieldCheck, path: '/verifications' },
+    { name: 'Ads Manager', icon: Megaphone, path: '/ads' },
+    { name: 'Ad Partners', icon: Building2, path: '/companies' },
   ]
 
   return (

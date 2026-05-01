@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator, SafeAreaView, StatusBar, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator, StatusBar, Platform, Modal } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../../constants/theme';
 import useAuth from '../../hooks/useAuth';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { userService } from '../../services/userService';
-import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, addDoc, query, where, getDocs, increment, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { couponService } from '../../services/couponService';
-import { increment, updateDoc } from 'firebase/firestore';
 
 const PaymentScreen = () => {
     const navigation = useNavigation();
@@ -20,6 +22,7 @@ const PaymentScreen = () => {
     const [isValidating, setIsValidating] = useState(false);
     const [discount, setDiscount] = useState(0);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     if (!plan) {
         return (
@@ -89,6 +92,7 @@ const PaymentScreen = () => {
 
         const transactionData = {
             uid: user.uid,
+            type: 'subscription',
             planId: plan.id,
             planName: plan.name,
             amount: finalPrice,
@@ -96,7 +100,7 @@ const PaymentScreen = () => {
             code: code.toUpperCase(),
             method,
             status: 'completed',
-            timestamp: serverTimestamp(),
+            createdAt: serverTimestamp(),
             expiryDate: expiryDate.toISOString()
         };
 
@@ -107,6 +111,7 @@ const PaymentScreen = () => {
         await updateProfile({
             hasPremium: true,
             premiumTier: plan.id,
+            premiumFeatures: plan.features || [], // Save features for adService/logic
             premiumExpiry: expiryDate.toISOString(),
             superLikes: plan.id === 'platinum' ? 10 : (plan.id === 'gold' ? 5 : 0),
             boosts: plan.id === 'gold' || plan.id === 'platinum' ? 1 : 0
@@ -127,14 +132,13 @@ const PaymentScreen = () => {
             }
         }
 
-        Alert.alert('Success', `Subscription activated! Welcome to ${plan.name}.`, [
-            { text: 'OK', onPress: () => navigation.navigate('MainTabs', { screen: 'Profile' }) }
-        ]);
+        setShowSuccessModal(true);
         setIsProcessing(false);
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+            <StatusBar barStyle="light-content" />
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color="white" />
@@ -157,7 +161,7 @@ const PaymentScreen = () => {
                     )}
                     <View style={[styles.summaryRow, styles.totalRow]}>
                         <Text style={styles.totalLabel}>Total Amount</Text>
-                        <Text style={styles.totalValue}>₹{finalPrice}</Text>
+                        <Text style={styles.totalValue}>{finalPrice === 0 ? 'FREE' : `₹${finalPrice}`}</Text>
                     </View>
                 </View>
 
@@ -217,6 +221,49 @@ const PaymentScreen = () => {
                     )}
                 </TouchableOpacity>
             </View>
+
+            {/* Premium Success Modal */}
+            <Modal
+                visible={showSuccessModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowSuccessModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+                    <View style={[styles.successCard, { backgroundColor: '#1a1a1a' }]}>
+                        <View style={styles.successIconWrapper}>
+                            <LinearGradient
+                                colors={['#00FF88', '#00BD63']}
+                                style={styles.successIconGradient}
+                            >
+                                <Ionicons name="checkmark" size={40} color="white" />
+                            </LinearGradient>
+                        </View>
+                        
+                        <Text style={styles.successTitle}>Subscription Activated!</Text>
+                        <Text style={styles.successSub}>
+                            Welcome to {plan.name}! Your account has been upgraded with all premium features.
+                        </Text>
+                        
+                        <TouchableOpacity 
+                            style={styles.modalActionBtn}
+                            onPress={() => {
+                                setShowSuccessModal(false);
+                                navigation.navigate('Main', { screen: 'Profile' });
+                            }}
+                        >
+                            <LinearGradient
+                                colors={[COLORS.primary, '#FF3366']}
+                                style={styles.modalActionGradient}
+                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                            >
+                                <Text style={styles.modalActionText}>Let's Spark!</Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };
@@ -225,7 +272,6 @@ const styles = StyleSheet.create({
     container: { 
         flex: 1, 
         backgroundColor: '#000',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     },
     header: { flexDirection: 'row', alignItems: 'center', padding: SPACING.m },
     headerTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 15 },
@@ -265,7 +311,69 @@ const styles = StyleSheet.create({
     buttonDisabled: { opacity: 0.5 },
     errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
     errorText: { color: 'white', fontSize: 16, marginBottom: 20 },
-    backLink: { color: COLORS.primary, fontWeight: 'bold' }
+    backLink: { color: COLORS.primary, fontWeight: 'bold' },
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    successCard: {
+        width: '100%',
+        borderRadius: 35,
+        padding: 30,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    successIconWrapper: {
+        marginBottom: 20,
+    },
+    successIconGradient: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#00FF88',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 10,
+    },
+    successTitle: {
+        fontSize: 24,
+        fontWeight: '900',
+        color: 'white',
+        textAlign: 'center',
+        marginBottom: 10,
+    },
+    successSub: {
+        fontSize: 16,
+        color: '#aaa',
+        textAlign: 'center',
+        marginBottom: 30,
+        lineHeight: 22,
+    },
+    modalActionBtn: {
+        width: '100%',
+        height: 60,
+        borderRadius: 20,
+        overflow: 'hidden',
+    },
+    modalActionGradient: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalActionText: {
+        color: 'white',
+        fontSize: 18,
+        fontWeight: '900',
+    },
 });
 
 export default PaymentScreen;

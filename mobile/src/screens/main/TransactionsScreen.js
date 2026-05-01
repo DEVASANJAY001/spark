@@ -72,7 +72,7 @@ const TransactionsScreen = () => {
             </View>
             <View style={styles.details}>
                 <Text style={[styles.typeText, { color: colors.text }]}>
-                    {item.type.replace('_', ' ').toUpperCase()}
+                    {item.planName ? `Spark ${item.planName.toUpperCase()}` : item.type.replace('_', ' ').toUpperCase()}
                 </Text>
                 <Text style={[styles.dateText, { color: colors.textSecondary }]}>
                     {formatDate(item.createdAt)}

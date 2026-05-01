@@ -14,7 +14,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
     const focusedRoute = state.routes[state.index];
     const focusedRouteName = getFocusedRouteNameFromRoute(focusedRoute);
     
-    const hiddenIn = ['ChatDetail', 'EditProfile', 'Settings', 'UserProfile', 'TicketChat'];
+    const hiddenIn = ['ChatDetail', 'EditProfile', 'Settings', 'UserProfile', 'TicketChat', 'CategoryDiscovery'];
     if (hiddenIn.includes(focusedRouteName)) {
         return null;
     }

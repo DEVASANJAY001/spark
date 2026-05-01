@@ -7,10 +7,16 @@ import { COLORS, SPACING, LAYOUT } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import useAuth from '../../hooks/useAuth';
 import { swipeService } from '../../services/swipeService';
+import AdBanner from '../../components/AdBanner';
+
+import { subscriptionService } from '../../services/subscriptionService';
+import { userService } from '../../services/userService';
+import { chatService } from '../../services/chatService';
+import { BlurView } from 'expo-blur';
 
 const { width } = Dimensions.get('window');
 
-const LikeCard = ({ item, matchedUids, currentUid, navigation, colors }) => {
+const LikeCard = ({ item, matchedUids, currentUid, navigation, colors, hasSeeLikes, profile }) => {
     const isSuperLike = item.swipeType === 'superlike';
     const shimmer = useRef(new Animated.Value(0)).current;
 
@@ -24,8 +30,28 @@ const LikeCard = ({ item, matchedUids, currentUid, navigation, colors }) => {
     const shimmerTranslate = shimmer.interpolate({ inputRange: [0, 1], outputRange: [-150, 150] });
     const isMatched = matchedUids.has(item.uid);
 
-    const handlePress = () => {
+    const handlePress = async () => {
+        if (!hasSeeLikes) {
+            navigation.navigate('Subscriptions');
+            return;
+        }
         if (isMatched || isSuperLike) {
+            // Check chat limit before navigating
+            const canStart = await chatService.canStartNewChat(currentUid, profile?.premiumTier);
+            
+            if (!canStart) {
+                const limit = userService.getChatLimit(profile?.premiumTier);
+                Alert.alert(
+                    'Chat Capacity Full',
+                    `Your current plan allows for ${limit} active conversations. Upgrade to unlock more capacity!`,
+                    [
+                        { text: 'Later', style: 'cancel' },
+                        { text: 'Upgrade', onPress: () => navigation.navigate('Subscriptions') }
+                    ]
+                );
+                return;
+            }
+
             const matchId = [currentUid, item.uid].sort().join('_');
             navigation.navigate('Chat', { screen: 'ChatDetail', params: { matchId, otherUser: item, viaSuperLike: isSuperLike } });
         }
@@ -36,7 +62,17 @@ const LikeCard = ({ item, matchedUids, currentUid, navigation, colors }) => {
             <Image
                 source={{ uri: (Array.isArray(item.photos) && item.photos[0]) || 'https://picsum.photos/400' }}
                 style={styles.image}
+                blurRadius={hasSeeLikes ? 0 : 50}
             />
+
+            {!hasSeeLikes && (
+                <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill}>
+                    <View style={styles.lockOverlay}>
+                        <Ionicons name="lock-closed" size={32} color="white" />
+                        <Text style={{ color: 'white', fontSize: 10, fontWeight: '900', marginTop: 8 }}>PREMIUM</Text>
+                    </View>
+                </BlurView>
+            )}
 
             {isSuperLike && (
                 <View style={styles.superLikeBadgeWrap}>
@@ -61,7 +97,9 @@ const LikeCard = ({ item, matchedUids, currentUid, navigation, colors }) => {
                 colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.85)']}
                 style={styles.cardInfo}
             >
-                <Text style={styles.nameLabel}>{item.firstName}, {item.age}</Text>
+                <Text style={styles.nameLabel}>
+                    {item.firstName}{(!item.firstName?.includes(item.age?.toString()) && item.age) ? `, ${item.age}` : ''}
+                </Text>
                 {(isMatched || isSuperLike) && (
                     <View style={styles.chatHintRow}>
                         <Ionicons name="chatbubble-ellipses" size={12} color={isSuperLike ? "#42A5F5" : "#00FF88"} />
@@ -85,6 +123,10 @@ const LikesScreen = ({ navigation }) => {
     const [topPicks, setTopPicks] = useState([]);
     const [loadingPicks, setLoadingPicks] = useState(false);
     const [activeTab, setActiveTab] = useState('Likes');
+    const [subscription, setSubscription] = useState(null);
+
+    const hasSeeLikes = userService.canUseFeature(profile, 'see_likes');
+    const hasTopPicks = userService.canUseFeature(profile, 'top_picks');
 
     useEffect(() => {
         if (user && profile) {
@@ -96,13 +138,23 @@ const LikesScreen = ({ navigation }) => {
             const unsubscribeMatches = swipeService.getMatches(user.uid, (uids) => {
                 setMatchedUids(uids);
             });
+            loadSubscription();
             fetchTopPicks();
             return () => {
                 unsubscribeLikes();
                 unsubscribeMatches();
             };
         }
-    }, [user, profile?.interestedIn]);
+    }, [user, profile?.interestedIn, profile?.premiumTier]);
+
+    const loadSubscription = async () => {
+        if (!user?.uid || !profile?.premiumTier) {
+            setSubscription(null);
+            return;
+        }
+        const sub = await subscriptionService.getUserSubscription(user.uid, profile.premiumTier);
+        setSubscription(sub);
+    };
 
     const fetchTopPicks = async () => {
         if (!user || !profile) return;
@@ -185,8 +237,13 @@ const LikesScreen = ({ navigation }) => {
                     data={likes}
                     numColumns={2}
                     keyExtractor={(item) => item.id || item.uid}
-                    renderItem={({ item }) => <LikeCard item={item} matchedUids={matchedUids} currentUid={user?.uid} navigation={navigation} colors={colors} />}
+                    renderItem={({ item }) => <LikeCard item={item} matchedUids={matchedUids} currentUid={user?.uid} navigation={navigation} colors={colors} hasSeeLikes={hasSeeLikes} profile={profile} />}
                     contentContainerStyle={styles.gridContent}
+                    ListHeaderComponent={
+                        <View style={{ paddingHorizontal: 15, paddingTop: 10 }}>
+                            <AdBanner placement="likes_top" style={{ height: 100 }} />
+                        </View>
+                    }
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
                             <View style={[styles.emptyIconCircle, { backgroundColor: colors.surface }]}>
@@ -209,13 +266,29 @@ const LikesScreen = ({ navigation }) => {
                         <View style={styles.center}>
                             <ActivityIndicator size="large" color={COLORS.primary} />
                         </View>
+                    ) : !hasTopPicks ? (
+                        <View style={styles.emptyContainer}>
+                            <View style={[styles.emptyIconCircle, { backgroundColor: colors.surface }]}>
+                                <Ionicons name="star" size={60} color="#FFD700" />
+                            </View>
+                            <Text style={[styles.emptyTitle, { color: colors.text }]}>Top Picks</Text>
+                            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                                Daily curated list of high-compatibility profiles just for you. Upgrade to Gold or Platinum to see them!
+                            </Text>
+                            <TouchableOpacity 
+                                style={[styles.actionBtn, { backgroundColor: '#FFD700' }]}
+                                onPress={() => navigation.navigate('Subscriptions')}
+                            >
+                                <Text style={[styles.actionBtnText, { color: '#000' }]}>Upgrade to Gold</Text>
+                            </TouchableOpacity>
+                        </View>
                     ) : (
                         <FlatList
                             data={topPicks}
                             numColumns={2}
                             keyExtractor={(item) => item.id || item.uid}
                             contentContainerStyle={styles.gridContent}
-                            renderItem={({ item }) => (
+                             renderItem={({ item }) => (
                                 <TouchableOpacity 
                                     style={[styles.likeCard, { backgroundColor: colors.surface }]}
                                     activeOpacity={0.9}
@@ -226,7 +299,9 @@ const LikesScreen = ({ navigation }) => {
                                         colors={['transparent', 'rgba(0,0,0,0.85)']}
                                         style={styles.cardInfo}
                                     >
-                                        <Text style={styles.nameLabel}>{item.firstName}, {item.age}</Text>
+                                        <Text style={styles.nameLabel}>
+                                            {item.firstName}{(!item.firstName?.includes(item.age?.toString()) && item.age) ? `, ${item.age}` : ''}
+                                        </Text>
                                         <Text style={styles.pickReason}>{item.interests?.[0] || 'Top Match'}</Text>
                                     </LinearGradient>
                                     <View style={styles.pickBadge}>
@@ -235,6 +310,11 @@ const LikesScreen = ({ navigation }) => {
                                     </View>
                                 </TouchableOpacity>
                             )}
+                            ListHeaderComponent={
+                                <View style={{ paddingHorizontal: 15, paddingTop: 10 }}>
+                                    <AdBanner placement="likes_top" style={{ height: 100 }} />
+                                </View>
+                            }
                             ListEmptyComponent={
                                 <View style={styles.emptyContainer}>
                                     <View style={[styles.emptyIconCircle, { backgroundColor: colors.surface }]}>
@@ -371,7 +451,12 @@ const styles = StyleSheet.create({
     actionBtn: { paddingHorizontal: 35, paddingVertical: 16, borderRadius: 20 },
     actionBtnText: { color: 'white', fontSize: 16, fontWeight: '800' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' }
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    lockOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    }
 });
 
 export default LikesScreen;

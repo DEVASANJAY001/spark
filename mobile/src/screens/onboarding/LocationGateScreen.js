@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../../constants/theme';
 
-const logo = require('../../logo.jpeg');
+const logo = require('../../../assets/logo.png');
 
 const LocationGateScreen = ({ onRequest }) => {
     return (

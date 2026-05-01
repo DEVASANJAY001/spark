@@ -91,7 +91,7 @@ const BoostModal = ({ visible, onClose }) => {
                         <Text style={styles.countdownNum}>{countdown}</Text>
                     </View>
 
-                    <Text style={styles.detail}>📍 Visible to users within 500 – 1000 KM for 20 minutes</Text>
+                    <Text style={styles.detail}>📍 Visible to users within 500 – 1000 KM for 30 minutes</Text>
 
                     <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
                         <Text style={styles.closeBtnText}>Got it!</Text>

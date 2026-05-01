@@ -15,10 +15,14 @@ import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { COLORS } from '../constants/theme';
 import { BlurView } from 'expo-blur';
+import { userService } from '../services/userService';
 
 const { width, height } = Dimensions.get('window');
 
-const DiscoveryFilterModal = ({ visible, onClose, initialFilters, onApply }) => {
+const DiscoveryFilterModal = ({ visible, onClose, initialFilters, onApply, profile }) => {
+    const isGoldOrPlatinum = userService.canUseFeature(profile, 'passport_mode');
+    const isPlatinum = userService.canUseFeature(profile, 'advanced_filters');
+
     const [filters, setFilters] = useState(initialFilters || {
         maxDistance: 50,
         ageRange: [18, 35],
@@ -91,14 +95,27 @@ const DiscoveryFilterModal = ({ visible, onClose, initialFilters, onApply }) => 
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionLabel}>Location</Text>
-                            <TouchableOpacity>
-                                <Text style={styles.linkText}>Current Location</Text>
+                            <TouchableOpacity onPress={() => {
+                                if (isGoldOrPlatinum) {
+                                    // Open location picker logic
+                                } else {
+                                    onClose();
+                                    // Navigation would happen here to upgrade
+                                }
+                            }}>
+                                <Text style={styles.linkText}>{isGoldOrPlatinum ? 'Add New Location' : 'Upgrade to Passport'}</Text>
                             </TouchableOpacity>
                         </View>
-                        <View style={styles.locationCard}>
-                            <Ionicons name="location" size={20} color={COLORS.primary} />
-                            <Text style={styles.locationText}>My Current Location</Text>
-                        </View>
+                        <TouchableOpacity 
+                            style={styles.locationCard}
+                            disabled={!isGoldOrPlatinum}
+                        >
+                            <Ionicons name="location" size={20} color={isGoldOrPlatinum ? COLORS.primary : '#555'} />
+                            <Text style={[styles.locationText, !isGoldOrPlatinum && { color: '#555' }]}>
+                                {filters.passportLocation ? filters.passportLocation.name : 'My Current Location'}
+                            </Text>
+                            {!isGoldOrPlatinum && <Ionicons name="lock-closed" size={14} color="#555" style={{ marginLeft: 'auto' }} />}
+                        </TouchableOpacity>
                     </View>
 
                     {/* Distance */}
@@ -178,11 +195,28 @@ const DiscoveryFilterModal = ({ visible, onClose, initialFilters, onApply }) => 
                         />
                     </View>
 
-                    {/* Lifestyles */}
-                    {renderOptionPicker('Workout', 'workout', PREDEFINED_OPTIONS.workout)}
-                    {renderOptionPicker('Smoking', 'smoking', PREDEFINED_OPTIONS.smoking)}
-                    {renderOptionPicker('Drinking', 'drinking', PREDEFINED_OPTIONS.drinking)}
-                    {renderOptionPicker('Pets', 'pets', PREDEFINED_OPTIONS.pets)}
+                    {/* Lifestyles (Platinum Exclusive) */}
+                    <View style={styles.premiumDivider}>
+                        <Ionicons name="diamond" size={16} color="#E5E4E2" />
+                        <Text style={styles.premiumDividerText}>PLATINUM EXCLUSIVE FILTERS</Text>
+                    </View>
+
+                    <View style={!isPlatinum && { opacity: 0.5 }}>
+                        {renderOptionPicker('Workout', 'workout', PREDEFINED_OPTIONS.workout)}
+                        {renderOptionPicker('Smoking', 'smoking', PREDEFINED_OPTIONS.smoking)}
+                        {renderOptionPicker('Drinking', 'drinking', PREDEFINED_OPTIONS.drinking)}
+                        {renderOptionPicker('Pets', 'pets', PREDEFINED_OPTIONS.pets)}
+                        
+                        {!isPlatinum && (
+                            <TouchableOpacity 
+                                style={styles.lockOverlay}
+                                activeOpacity={1}
+                            >
+                                <Ionicons name="lock-closed" size={32} color="white" />
+                                <Text style={styles.lockText}>Upgrade to Platinum</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
 
                     <View style={{ height: 100 }} />
                 </ScrollView>
@@ -307,6 +341,35 @@ const styles = StyleSheet.create({
     customBtnText: {
         color: COLORS.primary,
         fontWeight: 'bold',
+    },
+    premiumDivider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        marginVertical: 20,
+        paddingTop: 20,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.05)',
+    },
+    premiumDividerText: {
+        color: '#E5E4E2',
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 2,
+    },
+    lockOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRadius: 20,
+        zIndex: 10,
+    },
+    lockText: {
+        color: 'white',
+        fontWeight: 'bold',
+        marginTop: 10,
     }
 });
 

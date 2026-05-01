@@ -1,274 +1,241 @@
-import { useState, useEffect } from 'react'
-import { db } from '../firebase'
-import { collection, getDocs, updateDoc, doc, setDoc, deleteDoc } from 'firebase/firestore'
+import React, { useState, useEffect } from 'react';
 import { 
   CreditCard, 
-  Edit2, 
-  Save, 
-  X, 
-  CheckCircle2,
-  AlertCircle,
-  RefreshCcw,
-  Plus,
-  Trash2,
-  Zap
-} from 'lucide-react'
+  Plus, 
+  Trash2, 
+  CheckCircle2, 
+  XCircle, 
+  RefreshCw,
+  Zap,
+  Star,
+  Award,
+  Edit3,
+  Save,
+  X
+} from 'lucide-react';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  updateDoc, 
+  doc, 
+  setDoc,
+  deleteDoc
+} from 'firebase/firestore';
+import { db } from '../firebase';
 
 const Subscriptions = () => {
-  const [plans, setPlans] = useState([])
-  const [editingPlan, setEditingPlan] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState(false)
-  const [message, setMessage] = useState(null)
-  const [isAdding, setIsAdding] = useState(false)
-  
-  const [formData, setFormData] = useState({
-    id: '',
-    name: '',
-    price: '',
-    period: 'month',
-    features: '',
-    popular: false,
-    color1: '#fd267d',
-    color2: '#ff7854'
-  })
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingPlan, setEditingPlan] = useState(null);
 
   useEffect(() => {
-    fetchPlans()
-  }, [])
+    const q = query(collection(db, 'plans'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setPlans(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
 
-  const fetchPlans = async () => {
-    setLoading(true)
-    try {
-      const querySnapshot = await getDocs(collection(db, 'plans'))
-      const fetchedPlans = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
-      setPlans(fetchedPlans)
-    } catch (error) {
-      console.error('Error fetching plans:', error)
-      setMessage({ type: 'error', text: 'Failed to fetch plans: ' + error.message })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSavePlan = async (e) => {
-    e.preventDefault()
-    setUpdating(true)
-    try {
-      const planId = formData.id.toLowerCase().replace(/\s+/g, '-')
-      const planData = {
-        name: formData.name,
-        price: parseInt(formData.price),
-        period: formData.period,
-        features: formData.features.split(',').map(f => f.trim()),
-        popular: formData.popular,
-        colors: [formData.color1, formData.color2]
+  const handleSeedPlans = async () => {
+    const defaultPlans = [
+      {
+        id: 'silver',
+        name: 'Silver Explorer',
+        price: 199,
+        tier: 1,
+        color: '#C0C0C0',
+        features: [
+          'unlimited_swipes',
+          'see_likes',
+          '5_super_likes_day',
+          '1_boost_month',
+          'ad_free_video'
+        ]
+      },
+      {
+        id: 'gold',
+        name: 'Gold Power',
+        price: 499,
+        tier: 2,
+        color: '#FFD700',
+        features: [
+          'unlimited_swipes',
+          'see_likes',
+          '5_super_likes_day',
+          '1_boost_month',
+          'ad_free_video',
+          'unlimited_rewind',
+          'passport_mode',
+          'top_picks',
+          'read_receipts',
+          'priority_verification'
+        ]
+      },
+      {
+        id: 'platinum',
+        name: 'Platinum Elite',
+        price: 999,
+        tier: 3,
+        color: '#E5E4E2',
+        features: [
+          'unlimited_swipes',
+          'see_likes',
+          '5_super_likes_day',
+          '1_boost_month',
+          'ad_free_video',
+          'unlimited_rewind',
+          'passport_mode',
+          'top_picks',
+          'read_receipts',
+          'priority_verification',
+          'message_before_match',
+          'prioritized_likes',
+          'advanced_filters',
+          'incognito_mode',
+          'ad_free_total'
+        ]
       }
-      
-      await setDoc(doc(db, 'plans', planId), planData)
-      setMessage({ type: 'success', text: 'Plan saved successfully!' })
-      setIsAdding(false)
-      fetchPlans()
-      resetForm()
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Save failed: ' + error.message })
-    } finally {
-      setUpdating(false)
-    }
-  }
+    ];
 
-  const handleDeletePlan = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this plan?')) return
-    setUpdating(true)
-    try {
-      await deleteDoc(doc(db, 'plans', id))
-      setMessage({ type: 'success', text: 'Plan deleted.' })
-      fetchPlans()
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Delete failed: ' + error.message })
-    } finally {
-      setUpdating(false)
+    if (window.confirm('This will reset all plans to defaults. Continue?')) {
+      for (const plan of defaultPlans) {
+        await setDoc(doc(db, 'plans', plan.id), plan);
+      }
+      alert('Default plans seeded successfully!');
     }
-  }
+  };
 
-  const resetForm = () => {
-    setFormData({
-      id: '',
-      name: '',
-      price: '',
-      period: 'month',
-      features: '',
-      popular: false,
-      color1: '#fd267d',
-      color2: '#ff7854'
-    })
-  }
+  const handleUpdatePrice = async (id, newPrice) => {
+    await updateDoc(doc(db, 'plans', id), { price: parseFloat(newPrice) });
+    setEditingPlan(null);
+  };
+
+  const toggleFeature = async (planId, featureKey) => {
+    const plan = plans.find(p => p.id === planId);
+    let newFeatures = [...plan.features];
+    if (newFeatures.includes(featureKey)) {
+      newFeatures = newFeatures.filter(f => f !== featureKey);
+    } else {
+      newFeatures.push(featureKey);
+    }
+    await updateDoc(doc(db, 'plans', planId), { features: newFeatures });
+  };
 
   if (loading) return (
-    <div className="flex flex-col items-center justify-center h-full gap-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-primary"></div>
-      <p className="text-gray-500 animate-pulse text-sm">Loading Plans...</p>
+    <div className="flex items-center justify-center h-[60vh]">
+      <RefreshCw className="animate-spin text-primary" size={48} />
     </div>
-  )
+  );
 
   return (
-    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-20">
+    <div className="space-y-8 pb-20">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-display">Subscription Plans</h1>
-          <p className="text-gray-400 mt-1">Manage pricing, tiers, and billing periods.</p>
+          <h1 className="text-4xl font-black text-white tracking-tight">MONETIZATION <span className="text-primary text-lg">PRO</span></h1>
+          <p className="text-gray-500 mt-1 font-medium">Manage subscription tiers, pricing, and premium feature distribution.</p>
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={fetchPlans}
-            className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-gray-400 border border-white/10"
-          >
-            <RefreshCcw size={18} />
-          </button>
-          <button 
-            onClick={() => setIsAdding(!isAdding)}
-            className="btn-primary text-sm flex items-center gap-2"
-          >
-            {isAdding ? <X size={18} /> : <Plus size={18} />}
-            {isAdding ? 'Cancel' : 'Add New Plan'}
-          </button>
-        </div>
+        <button 
+          onClick={handleSeedPlans}
+          className="bg-white/5 hover:bg-white/10 text-gray-400 px-6 py-4 rounded-2xl font-bold flex items-center gap-2 border border-white/10 transition-all"
+        >
+          <RefreshCw size={18} /> Reset Defaults
+        </button>
       </div>
 
-      {message && (
-        <div className={`p-4 rounded-2xl flex items-center gap-3 animate-in fade-in zoom-in duration-300 border ${message.type === 'success' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-          {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-          <span className="text-sm font-medium">{message.text}</span>
-          <button onClick={() => setMessage(null)} className="ml-auto opacity-50 hover:opacity-100"><X size={16}/></button>
-        </div>
-      )}
-
-      {isAdding && (
-        <div className="glass-card p-8 animate-in slide-in-from-top-4 duration-300">
-          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-            <Zap className="text-primary" size={20} />
-            Create New Tier
-          </h3>
-          <form onSubmit={handleSavePlan} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Plan ID (Unique)</label>
-              <input 
-                required
-                className="input-field" 
-                placeholder="e.g. platinum"
-                value={formData.id}
-                onChange={e => setFormData({...formData, id: e.target.value})}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {plans.sort((a,b) => a.tier - b.tier).map((plan) => (
+          <div key={plan.id} className="bg-surface border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col group hover:border-primary/50 transition-all">
+            {/* Plan Header */}
+            <div className="p-10 text-center relative">
+              <div 
+                className="absolute inset-0 opacity-10" 
+                style={{ background: `radial-gradient(circle at center, ${plan.color || '#fff'}, transparent)` }} 
               />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Display Name</label>
-              <input 
-                required
-                className="input-field" 
-                placeholder="e.g. Spark Platinum"
-                value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Price (₹)</label>
-              <input 
-                required
-                type="number"
-                className="input-field" 
-                placeholder="e.g. 799"
-                value={formData.price}
-                onChange={e => setFormData({...formData, price: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Period</label>
-              <select 
-                className="input-field"
-                value={formData.period}
-                onChange={e => setFormData({...formData, period: e.target.value})}
-              >
-                <option value="daily">Daily</option>
-                <option value="week">Weekly</option>
-                <option value="month">Monthly</option>
-                <option value="year">Yearly</option>
-              </select>
-            </div>
-            <div className="md:col-span-2 space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Features (comma separated)</label>
-              <input 
-                required
-                className="input-field" 
-                placeholder="Unlimited Likes, Passport Mode, Priority Likes"
-                value={formData.features}
-                onChange={e => setFormData({...formData, features: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Accent Colors</label>
-              <div className="flex gap-2">
-                <input type="color" className="h-10 w-full rounded-lg bg-surface border-0" value={formData.color1} onChange={e => setFormData({...formData, color1: e.target.value})} />
-                <input type="color" className="h-10 w-full rounded-lg bg-surface border-0" value={formData.color2} onChange={e => setFormData({...formData, color2: e.target.value})} />
-              </div>
-            </div>
-            <div className="flex items-end pb-1">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" className="w-5 h-5 rounded border-white/10 bg-white/5 text-primary" checked={formData.popular} onChange={e => setFormData({...formData, popular: e.target.checked})} />
-                <span className="text-sm font-medium">Most Popular?</span>
-              </label>
-            </div>
-            <div className="md:col-span-4 flex justify-end gap-3 mt-4">
-               <button type="submit" disabled={updating} className="btn-primary px-10">
-                 {updating ? 'Saving...' : 'Save Plan'}
-               </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {plans.map((plan) => (
-          <div key={plan.id} className="glass-card p-8 flex flex-col gap-6 relative group border-t-4" style={{ borderColor: plan.colors?.[0] || '#fd267d' }}>
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-2xl font-bold font-display">{plan.name}</h3>
-                <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mt-1">{plan.id}</p>
-              </div>
-              <button 
-                onClick={() => handleDeletePlan(plan.id)}
-                className="p-2 text-gray-600 hover:text-red-500 transition-colors"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
-
-            <div className="flex items-baseline gap-2">
-              <span className="text-5xl font-display font-bold tracking-tight">₹{plan.price}</span>
-              <span className="text-gray-500 uppercase text-xs font-bold tracking-widest">/{plan.period}</span>
-            </div>
-
-            <div className="space-y-4 flex-1 pt-6 border-t border-white/5">
-              {plan.features?.map((feature, i) => (
-                <div key={i} className="flex items-center gap-3 text-sm text-gray-400">
-                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: plan.colors?.[0] }} />
-                  <span className="truncate">{feature}</span>
+              <div className="relative z-10">
+                <div className="w-20 h-20 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-6 shadow-xl">
+                  {plan.tier === 1 && <Zap size={32} style={{ color: plan.color }} />}
+                  {plan.tier === 2 && <Star size={32} style={{ color: plan.color }} />}
+                  {plan.tier === 3 && <Award size={32} style={{ color: plan.color }} />}
                 </div>
-              ))}
+                <h3 className="text-3xl font-black text-white uppercase tracking-tight">{plan.name}</h3>
+                
+                {editingPlan === plan.id ? (
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    <span className="text-2xl font-black text-gray-500">₹</span>
+                    <input 
+                      autoFocus
+                      defaultValue={plan.price}
+                      onBlur={(e) => handleUpdatePrice(plan.id, e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleUpdatePrice(plan.id, e.target.value)}
+                      className="bg-white/10 border border-white/20 text-4xl font-black text-white w-32 px-2 py-1 rounded-xl outline-none focus:border-primary"
+                    />
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => setEditingPlan(plan.id)}
+                    className="mt-4 flex items-center justify-center gap-2 cursor-pointer group/price"
+                  >
+                    <p className="text-5xl font-black text-white tracking-tighter">₹{plan.price}</p>
+                    <span className="text-gray-500 text-sm font-bold mt-4">/mo</span>
+                    <Edit3 size={16} className="text-primary opacity-0 group-hover/price:opacity-100 transition-opacity ml-2" />
+                  </div>
+                )}
+              </div>
             </div>
 
-            {plan.popular && (
-              <div className="absolute top-4 right-4 bg-primary/10 text-primary text-[10px] font-black px-2 py-1 rounded">
-                POPULAR
+            {/* Features List */}
+            <div className="flex-1 p-10 bg-black/20 space-y-4">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-6">Tier Entitlements</p>
+              <div className="space-y-4">
+                {ALL_FEATURES.map((feature) => {
+                  const isActive = plan.features.includes(feature.key);
+                  return (
+                    <button 
+                      key={feature.key}
+                      onClick={() => toggleFeature(plan.id, feature.key)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${isActive ? 'bg-white/5 border-white/10' : 'bg-transparent border-transparent opacity-40 hover:opacity-100'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        {isActive ? <CheckCircle2 size={18} className="text-emerald-400" /> : <XCircle size={18} className="text-gray-600" />}
+                        <span className={`text-sm font-bold ${isActive ? 'text-white' : 'text-gray-500'}`}>{feature.label}</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
+
+            <div className="p-8 border-t border-white/5 bg-white/[0.02]">
+              <div className="flex items-center justify-between text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                <span>Database ID: {plan.id}</span>
+                <span>Tier Level: {plan.tier}</span>
+              </div>
+            </div>
           </div>
         ))}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Subscriptions
+const ALL_FEATURES = [
+  { key: 'unlimited_swipes', label: 'Unlimited Swipes' },
+  { key: 'see_likes', label: 'See Who Likes You' },
+  { key: '5_super_likes_day', label: '5 Super Likes / Day' },
+  { key: '1_boost_month', label: '1 Profile Boost / Month' },
+  { key: 'ad_free_video', label: 'Remove Video Ads' },
+  { key: 'unlimited_rewind', label: 'Unlimited Rewind' },
+  { key: 'passport_mode', label: 'Passport (Global Travel)' },
+  { key: 'top_picks', label: 'Daily Top Picks' },
+  { key: 'read_receipts', label: 'Read Receipts' },
+  { key: 'priority_verification', label: 'Priority Verification' },
+  { key: 'message_before_match', label: 'Message Before Match' },
+  { key: 'prioritized_likes', label: 'Prioritized Likes' },
+  { key: 'advanced_filters', label: 'Advanced Search Filters' },
+  { key: 'incognito_mode', label: 'Incognito Mode' },
+  { key: 'ad_free_total', label: '100% Ad-Free Experience' },
+];
+
+export default Subscriptions;

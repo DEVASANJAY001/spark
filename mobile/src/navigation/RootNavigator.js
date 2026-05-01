@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, Linking, AppState } from 'react-native';
+import { Alert, Linking, AppState, Platform } from 'react-native';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
@@ -9,9 +9,14 @@ import MainTabNavigator from './MainTabNavigator';
 import SplashScreen from '../components/SplashScreen';
 import LocationGateScreen from '../screens/onboarding/LocationGateScreen';
 import UserProfileScreen from '../screens/main/UserProfileScreen';
+import CategoryDiscoveryScreen from '../screens/main/CategoryDiscoveryScreen';
+import SubscriptionScreen from '../screens/main/SubscriptionScreen';
+import PaymentScreen from '../screens/main/PaymentScreen';
+import StaticContentScreen from '../screens/main/StaticContentScreen';
 import useAuth from '../hooks/useAuth';
 import { presenceService } from '../services/presenceService';
 import { notificationService } from '../services/notificationService';
+import { userService } from '../services/userService';
 
 const Stack = createNativeStackNavigator();
 
@@ -59,68 +64,103 @@ const RootNavigator = () => {
 
     const checkLocation = async () => {
         try {
-            // First check if device location services are ON
+            console.log('[RootNavigator] Checking location status...');
+            
+            // 1. Check if device location services are ON
             const servicesEnabled = await Location.hasServicesEnabledAsync();
+            console.log('[RootNavigator] Device Location Services:', servicesEnabled);
+            
             if (!servicesEnabled) {
+                console.log('[RootNavigator] Location services are OFF. Blocking access.');
                 setLocationGranted(false);
                 return;
             }
-            // Then check app permission
+
+            // 2. Check app permission
             const { status } = await Location.getForegroundPermissionsAsync();
+            console.log('[RootNavigator] App Permission Status:', status);
+
             if (status === 'granted') {
                 setLocationGranted(true);
+                // Background update of user's coordinates if logged in
+                if (user?.uid) {
+                    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+                        .then(pos => userService.updateDeviceLocation(user.uid, pos.coords))
+                        .catch(err => console.log('Silent location update fail:', err));
+                }
             } else if (status === 'undetermined') {
                 // Permission never asked — request it now automatically
                 const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+                console.log('[RootNavigator] New Permission Request Result:', newStatus);
                 setLocationGranted(newStatus === 'granted');
             } else {
-                // Denied — show gate
+                // Denied or restricted
+                console.log('[RootNavigator] Permission Denied. Blocking access.');
                 setLocationGranted(false);
             }
         } catch (e) {
-            console.warn('Location check error:', e);
+            console.error('[RootNavigator] Location check error:', e);
             setLocationGranted(false);
         }
     };
 
     const requestLocation = async () => {
         try {
-            // 1. Try to enable location services automatically (System Dialog)
-            if (Platform.OS === 'android') {
-                try {
-                    await Location.enableNetworkProviderAsync();
-                } catch (e) {
-                    console.log('Network provider enable failed or cancelled');
-                }
+            console.log('[RootNavigator] Manual refresh requested...');
+            
+            // 1. Check permissions first
+            let { status } = await Location.getForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+                status = newStatus;
             }
 
-            // 2. Check if services are now enabled
-            const servicesEnabled = await Location.hasServicesEnabledAsync();
-            if (!servicesEnabled) {
-                Alert.alert(
-                    'Location Services Required',
-                    'Please enable location services in your device settings to continue.',
-                    [
-                        { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                        { text: 'Cancel', style: 'cancel' }
-                    ]
-                );
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Please enable location permissions in your phone settings.');
                 return;
             }
 
-            // 3. Request Permission
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status === 'granted') {
+            // 2. Try to enable services if off (Android only)
+            if (Platform.OS === 'android') {
+                const isEnabled = await Location.hasServicesEnabledAsync();
+                if (!isEnabled) {
+                    try {
+                        await Location.enableNetworkProviderAsync();
+                    } catch (e) {
+                        // User might have cancelled or already on
+                    }
+                }
+            }
+
+            // 3. IMPORTANT: Small delay to let the OS update its internal state
+            // and ensure expo-location sees the change.
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            // 4. Final verification
+            const finalServicesEnabled = await Location.hasServicesEnabledAsync();
+            const { status: finalPermission } = await Location.getForegroundPermissionsAsync();
+
+            console.log('[RootNavigator] Final Sync - Services:', finalServicesEnabled, 'Perm:', finalPermission);
+
+            if (finalServicesEnabled && finalPermission === 'granted') {
+                console.log('[RootNavigator] Success! Refreshing UI.');
                 setLocationGranted(true);
+                if (user?.uid) {
+                    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+                        .then(pos => userService.updateDeviceLocation(user.uid, pos.coords))
+                        .catch(err => console.log('Silent manual location update fail:', err));
+                }
             } else {
+                console.log('[RootNavigator] Verification failed after refresh.');
                 Alert.alert(
-                    'Permission Denied',
-                    'Spark needs your location to find nearby matches.',
-                    [{ text: 'Open Settings', onPress: () => Linking.openSettings() }]
+                    'Location Still Off',
+                    'We still can\'t detect your location. Please make sure GPS is ON in your notification bar.',
+                    [{ text: 'Check Again', onPress: () => requestLocation() }, { text: 'Settings', onPress: () => Linking.openSettings() }]
                 );
             }
         } catch (e) {
-            console.warn('Location request error:', e);
+            console.error('[RootNavigator] Request error:', e);
+            setLocationGranted(false);
         }
     };
 
@@ -151,6 +191,10 @@ const RootNavigator = () => {
                     <>
                         <Stack.Screen name="Main" component={MainTabNavigator} />
                         <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+                        <Stack.Screen name="CategoryDiscovery" component={CategoryDiscoveryScreen} />
+                        <Stack.Screen name="Subscriptions" component={SubscriptionScreen} />
+                        <Stack.Screen name="Payment" component={PaymentScreen} />
+                        <Stack.Screen name="StaticContent" component={StaticContentScreen} />
                     </>
                 )}
             </Stack.Navigator>

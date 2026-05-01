@@ -86,8 +86,8 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
 
             {/* High-End Shadow Gradient */}
             <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.95)']}
-                locations={[0, 0.4, 0.7, 1]}
+                colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.8)', '#000000']}
+                locations={[0, 0.4, 0.8, 1]}
                 style={styles.gradient}
             />
 
@@ -111,8 +111,9 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
                 {/* Primary Info */}
                 <View style={styles.mainInfo}>
                     <View style={styles.nameRow}>
-                        <Text style={styles.name}>{profile.firstName}</Text>
-                        <Text style={styles.age}>, {(!profile.age || isNaN(profile.age)) ? '21' : profile.age}</Text>
+                        <Text style={styles.name}>
+                            {profile.firstName}{(!profile.firstName?.includes(profile.age?.toString()) && profile.age) ? `, ${profile.age}` : ''}
+                        </Text>
                         {profile.isVerified && (
                             <View style={styles.verifiedBadge}>
                                 <Ionicons name="checkmark-sharp" size={14} color="white" />
@@ -131,6 +132,16 @@ const SwipeCard = ({ profile, currentUserLocation }) => {
                         <Text style={styles.bio} numberOfLines={2}>
                             {profile.bio}
                         </Text>
+                    )}
+
+                    {/* Location / Distance Row */}
+                    {(distance !== null || profile.city) && (
+                        <View style={styles.locationRow}>
+                            <Ionicons name="location-sharp" size={14} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.locationText}>
+                                {distance !== null ? `${Math.round(distance)} km away` : profile.city}
+                            </Text>
+                        </View>
                     )}
                 </View>
             </View>
@@ -153,10 +164,10 @@ const styles = StyleSheet.create({
     },
     gradient: {
         position: 'absolute',
-        bottom: 0,
+        bottom: -2, // Slight bleed to ensure full coverage
         left: 0,
         right: 0,
-        height: '65%',
+        height: '75%',
     },
     navigationOverlay: {
         position: 'absolute',
@@ -276,6 +287,17 @@ const styles = StyleSheet.create({
         lineHeight: 22,
         marginTop: 8,
         fontWeight: '500',
+    },
+    locationRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 10,
+    },
+    locationText: {
+        color: 'rgba(255,255,255,0.7)',
+        fontSize: 13,
+        fontWeight: '600',
+        marginLeft: 4,
     }
 });
 

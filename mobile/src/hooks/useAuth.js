@@ -34,9 +34,7 @@ const useAuth = () => {
                             setIsProfileComplete(fsData.isProfileComplete || false);
                             setProfile({
                                 ...rtdbData,
-                                ...fsData,
-                                hasPremium: true,
-                                premiumTier: 'platinum'
+                                ...fsData
                             });
                         }
                     } catch (e) {
@@ -68,14 +66,16 @@ const useAuth = () => {
                 // 3. Listen to RTDB Photos
                 const photosRef = ref(rtdb, `users/${authUser.uid}/photos`);
                 const unsubscribePhotos = onValue(photosRef, (snap) => {
+                    const mergedPhotos = new Array(9).fill(null);
                     if (snap.exists()) {
                         const rtdbPhotos = snap.val();
-                        const mergedPhotos = [];
                         for (let i = 0; i < 9; i++) {
-                            if (rtdbPhotos[`photo_${i}`]) mergedPhotos.push(rtdbPhotos[`photo_${i}`]);
+                            if (rtdbPhotos[`photo_${i}`]) {
+                                mergedPhotos[i] = rtdbPhotos[`photo_${i}`];
+                            }
                         }
-                        setProfile(prev => ({ ...prev, photos: mergedPhotos }));
                     }
+                    setProfile(prev => ({ ...prev, photos: mergedPhotos }));
                 });
 
                 return () => {

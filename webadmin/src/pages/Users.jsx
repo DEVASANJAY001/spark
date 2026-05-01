@@ -140,28 +140,59 @@ const Users = () => {
                   </span>
                 </td>
                 <td className="px-6 py-5">
-                  <span className={`text-xs font-bold ${
-                    user.premiumTier === 'platinum' ? 'text-gray-400' :
-                    user.premiumTier === 'gold' ? 'text-yellow-500' :
-                    user.premiumTier === 'plus' ? 'text-pink-500' : 'text-gray-600'
-                  }`}>
-                    {user.hasPremium ? `SPARK ${user.premiumTier?.toUpperCase()}` : 'FREE'}
-                  </span>
+                  <select 
+                    value={user.premiumTier || 'free'}
+                    onChange={async (e) => {
+                      const tier = e.target.value;
+                      await updateDoc(doc(db, 'users', user.id), {
+                        premiumTier: tier === 'free' ? null : tier,
+                        hasPremium: tier !== 'free'
+                      });
+                      fetchUsers();
+                    }}
+                    className={`bg-transparent text-xs font-bold outline-none cursor-pointer border-b border-transparent hover:border-white/20 transition-all ${
+                      user.premiumTier === 'platinum' ? 'text-[#E5E4E2]' :
+                      user.premiumTier === 'gold' ? 'text-[#FFD700]' :
+                      user.premiumTier === 'silver' ? 'text-[#C0C0C0]' : 'text-gray-600'
+                    }`}
+                  >
+                    <option value="free" className="bg-surface text-gray-400 font-bold">FREE TIER</option>
+                    <option value="silver" className="bg-surface text-[#C0C0C0] font-bold">SILVER</option>
+                    <option value="gold" className="bg-surface text-[#FFD700] font-bold">GOLD</option>
+                    <option value="platinum" className="bg-surface text-[#E5E4E2] font-bold">PLATINUM</option>
+                  </select>
                 </td>
                 <td className="px-6 py-5 text-xs text-gray-500">
                   {user.createdAt?.toDate ? new Date(user.createdAt.toDate()).toLocaleDateString() : 'N/A'}
                 </td>
                 <td className="px-6 py-5">
-                  {user.isVerified ? (
-                    <ShieldCheck className="text-blue-500" size={18} />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border-2 border-white/10" />
-                  )}
+                  <button 
+                    onClick={async () => {
+                      await updateDoc(doc(db, 'users', user.id), {
+                        isVerified: !user.isVerified
+                      });
+                      fetchUsers();
+                    }}
+                    className={`transition-colors ${user.isVerified ? 'text-blue-500' : 'text-gray-600 hover:text-blue-400'}`}
+                    title={user.isVerified ? 'Revoke Verification' : 'Verify User'}
+                  >
+                    <ShieldCheck size={20} fill={user.isVerified ? 'rgba(59, 130, 246, 0.1)' : 'transparent'} />
+                  </button>
                 </td>
                 <td className="px-6 py-5 text-right">
                   <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors" title="View Profile">
-                      <Eye size={18} />
+                    <button 
+                      onClick={async () => {
+                        const newRole = user.role === 'admin' ? 'user' : 'admin';
+                        if (window.confirm(`Are you sure you want to make this user an ${newRole}?`)) {
+                            await updateDoc(doc(db, 'users', user.id), { role: newRole });
+                            fetchUsers();
+                        }
+                      }}
+                      className={`p-2 rounded-lg transition-colors ${user.role === 'admin' ? 'text-purple-500 bg-purple-500/10' : 'text-gray-400 hover:text-white'}`}
+                      title={user.role === 'admin' ? 'Revoke Admin' : 'Make Admin'}
+                    >
+                      <UserIcon size={18} />
                     </button>
                     <button 
                       className={`p-2 rounded-lg transition-colors ${user.status === 'Banned' ? 'text-green-500 hover:bg-green-500/10' : 'text-red-500 hover:bg-red-500/10'}`} 

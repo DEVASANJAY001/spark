@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
-const logo = require('../../logo.jpeg');
+const logo = require('../../../assets/logo.png');
 
 import Constants from 'expo-constants';
 

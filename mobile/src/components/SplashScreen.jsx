@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BRAND_COLORS } from '../constants/theme';
 
 const { width, height } = Dimensions.get('window');
-const logo = require('../logo.jpeg');
+const logo = require('../../assets/logo.png');
 
 const SplashScreen = ({ onFinish, autoFinishDelay = 2200 }) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;

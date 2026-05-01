@@ -27,6 +27,7 @@ import { userService } from '../../services/userService';
 import UsernameModal from '../../components/UsernameModal';
 import { useTheme } from '../../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import AdBanner from '../../components/AdBanner';
 
 const { width } = Dimensions.get('window');
 
@@ -42,6 +43,23 @@ const EditProfileScreen = () => {
     const [jobTitle, setJobTitle] = useState(profile?.jobTitle || '');
     const [company, setCompany] = useState(profile?.company || '');
     const [smartPhotos, setSmartPhotos] = useState(profile?.smartPhotos || false);
+    const [photos, setPhotos] = useState(profile?.photos || new Array(9).fill(null));
+
+    // Sync local state with profile when it loads
+    useEffect(() => {
+        if (profile) {
+            if (!hasUnsavedChanges) {
+                setBio(profile.bio || '');
+                setJobTitle(profile.jobTitle || '');
+                setCompany(profile.company || '');
+                setSmartPhotos(profile.smartPhotos || false);
+                // Sync photos if they changed in background (e.g. upload complete)
+                if (JSON.stringify(profile.photos) !== JSON.stringify(photos)) {
+                    setPhotos(profile.photos || new Array(9).fill(null));
+                }
+            }
+        }
+    }, [profile]);
 
     // Modal States
     const [pickerVisible, setPickerVisible] = useState(false);
@@ -121,9 +139,10 @@ const EditProfileScreen = () => {
                 const downloadUrl = await userService.uploadPhoto(user.uid, localUri, index);
 
                 if (downloadUrl) {
-                    const newPhotos = [...(profile?.photos || [])];
-                    while (newPhotos.length <= index) newPhotos.push(null);
+                    const newPhotos = [...photos];
                     newPhotos[index] = downloadUrl;
+                    setPhotos(newPhotos);
+                    // updateProfile will sync it to the profile path as well
                     await updateProfile({ photos: newPhotos });
                 }
             }
@@ -147,9 +166,19 @@ const EditProfileScreen = () => {
         setPhotoActionVisible(false);
         if (!user) return;
         try {
+            // Instant local update with auto-shift logic for smooth UI
+            const remainingPhotos = photos.filter((p, i) => i !== selectedPhotoIndex && p != null);
+            const newPhotos = new Array(9).fill(null);
+            remainingPhotos.forEach((url, i) => {
+                newPhotos[i] = url;
+            });
+            setPhotos(newPhotos);
+            
             await userService.removePhoto(user.uid, selectedPhotoIndex);
         } catch (error) {
             Alert.alert("Error", "Failed to remove photo.");
+            // Rollback if needed
+            setPhotos(profile?.photos || new Array(9).fill(null));
         }
     };
 
@@ -164,12 +193,13 @@ const EditProfileScreen = () => {
         await updateProfile({ height: val });
     };
 
-    // Debounced saves
+    // Accelerated auto-saves (Reduced from 1.5s to 500ms for "Immediate" feel)
     useEffect(() => {
         if (!user || bio === (profile?.bio || '')) return;
         const timer = setTimeout(() => {
             userService.updateProfileField(user.uid, 'bio', bio);
-        }, 1500);
+            setHasUnsavedChanges(false);
+        }, 500);
         return () => clearTimeout(timer);
     }, [bio]);
 
@@ -177,7 +207,8 @@ const EditProfileScreen = () => {
         if (!user || jobTitle === (profile?.jobTitle || '')) return;
         const timer = setTimeout(() => {
             userService.updateProfileField(user.uid, 'jobTitle', jobTitle);
-        }, 1500);
+            setHasUnsavedChanges(false);
+        }, 500);
         return () => clearTimeout(timer);
     }, [jobTitle]);
 
@@ -185,7 +216,8 @@ const EditProfileScreen = () => {
         if (!user || company === (profile?.company || '')) return;
         const timer = setTimeout(() => {
             userService.updateProfileField(user.uid, 'company', company);
-        }, 1500);
+            setHasUnsavedChanges(false);
+        }, 500);
         return () => clearTimeout(timer);
     }, [company]);
 
@@ -242,16 +274,16 @@ const EditProfileScreen = () => {
                                             style={[styles.photoSlot, { backgroundColor: colors.surface }]}
                                             onPress={() => handlePhotoPress(index)}
                                         >
-                                            {profile?.photos?.[index] ? (
-                                                <Image source={{ uri: profile.photos[index] }} style={styles.photoImage} />
+                                            {photos[index] ? (
+                                                <Image source={{ uri: photos[index] }} style={styles.photoImage} />
                                             ) : (
                                                 <View style={styles.addPlaceholder}>
                                                     <Ionicons name="add" size={32} color={colors.textSecondary} />
                                                 </View>
                                             )}
-                                            <View style={[styles.editIconWrap, { backgroundColor: profile?.photos?.[index] ? COLORS.primary : colors.surface, borderColor: colors.background }]}>
+                                            <View style={[styles.editIconWrap, { backgroundColor: photos[index] ? COLORS.primary : colors.surface, borderColor: colors.background }]}>
                                                 <Ionicons
-                                                    name={profile?.photos?.[index] ? "pencil" : "add"}
+                                                    name={photos[index] ? "pencil" : "add"}
                                                     size={12}
                                                     color="white"
                                                 />
@@ -434,6 +466,10 @@ const EditProfileScreen = () => {
                             </View>
                         </View>
                     )}
+                    {/* Profile Dashboard Ad */}
+                    <View style={{ paddingHorizontal: 20, marginTop: 30, marginBottom: 50 }}>
+                        <AdBanner placement="profile_bottom" style={{ height: 110, borderRadius: 25 }} />
+                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
 

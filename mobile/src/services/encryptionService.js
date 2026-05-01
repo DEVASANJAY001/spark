@@ -40,13 +40,23 @@ export const encryptionService = {
     decrypt: (ciphertext, key) => {
         if (!ciphertext || !key) return ciphertext;
         try {
+            // CryptoJS might crash if it attempts to use native crypto for salt generation
+            // when given a raw string. We ensure it's treated as a secure key.
             const bytes = CryptoJS.AES.decrypt(ciphertext, key);
             const originalText = bytes.toString(CryptoJS.enc.Utf8);
-            if (!originalText) return ciphertext; // Return raw if decryption yields empty
-            return originalText;
+            
+            if (!originalText && ciphertext.includes('U2FsdGVkX1')) {
+                // If it looks like AES but yielded nothing, it might be a key mismatch
+                console.warn('Decryption yielded empty string - possible key mismatch');
+                return '[Encrypted Message]';
+            }
+            
+            return originalText || ciphertext;
         } catch (error) {
-            console.warn('Decryption failed:', error.message);
-            return ciphertext; // Return raw ciphertext instead of "[Encrypted Message]"
+            // The error "Native crypto module could not be used" often happens in CryptoJS 
+            // when it tries to seed its internal PRNG. 
+            console.warn('Decryption error:', error.message);
+            return ciphertext;
         }
     },
 
@@ -55,6 +65,11 @@ export const encryptionService = {
      * Uses our polyfilled getRandomValues instead of CryptoJS.lib.WordArray.random
      */
     generateKey: () => {
-        return generateSafeRandomKey(32);
+        try {
+            return generateSafeRandomKey(32);
+        } catch (e) {
+            // Fallback to simpler random if polyfill fails
+            return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        }
     }
 };

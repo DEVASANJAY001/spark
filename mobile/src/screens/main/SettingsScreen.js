@@ -19,6 +19,7 @@ import Constants from 'expo-constants';
 import { COLORS, SPACING } from '../../constants/theme';
 import useAuth from '../../hooks/useAuth';
 import { useTheme } from '../../context/ThemeContext';
+import { userService } from '../../services/userService';
 
 import OptionPickerModal from '../../components/OptionPickerModal';
 import UsernameModal from '../../components/UsernameModal';
@@ -252,12 +253,44 @@ const SettingsScreen = ({ navigation }) => {
                     />
                 </View>
 
+                {/* Platinum Features */}
+                <SettingHeader title="Platinum Elite Features" />
+                <View style={styles.sectionGroup}>
+                    <SettingToggle 
+                        icon="eye-off-outline" 
+                        label="Incognito Mode" 
+                        value={profile?.incognitoMode} 
+                        onValueChange={(val) => {
+                            if (userService.canUseFeature(profile, 'incognito_mode')) {
+                                updateProfile({ incognitoMode: val });
+                            } else {
+                                Alert.alert('Platinum Elite', 'Upgrade to Platinum to browse profiles anonymously!', [
+                                    { text: 'Later' },
+                                    { text: 'Upgrade', onPress: () => navigation.navigate('Subscriptions') }
+                                ]);
+                            }
+                        }} 
+                        color="#E5E4E2"
+                    />
+                </View>
+
+                {/* Payments & History */}
+                <SettingHeader title="Payments & History" />
+                <View style={styles.sectionGroup}>
+                    <SettingItem 
+                        icon="receipt-outline" 
+                        label="Payment History" 
+                        onPress={() => navigation.navigate('Transactions')} 
+                    />
+                </View>
+
                 {/* Privacy & Legal */}
                 <SettingHeader title="Privacy & Legal" />
                 <View style={styles.sectionGroup}>
-                    <SettingItem icon="shield-checkmark-outline" label="Privacy Preferences" onPress={() => navigation.navigate('StaticContent', { type: 'privacy_policy' })} />
+                    <SettingItem icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => navigation.navigate('StaticContent', { type: 'privacy_policy' })} />
                     <SettingItem icon="document-text-outline" label="Terms of Service" onPress={() => navigation.navigate('StaticContent', { type: 'terms_of_service' })} />
-                    <SettingItem icon="business-outline" label="DAVNS INDUSTRIES" showArrow={false} color="#666" />
+                    <SettingItem icon="refresh-circle-outline" label="Refund & Return Policy" onPress={() => navigation.navigate('StaticContent', { type: 'refund_policy' })} />
+                    <SettingItem icon="business-outline" label="DAVNS INDUSTRIES" onPress={() => navigation.navigate('StaticContent', { type: 'about_davns' })} />
                 </View>
 
                 {/* Support */}

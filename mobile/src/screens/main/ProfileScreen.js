@@ -8,29 +8,58 @@ import { userService } from '../../services/userService';
 import { COLORS, SPACING, LAYOUT } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import UsernameModal from '../../components/UsernameModal';
+import BoostModal from '../../components/BoostModal';
+import { swipeService } from '../../services/swipeService';
+import { subscriptionService } from '../../services/subscriptionService';
+import AdBanner from '../../components/AdBanner';
 
 const { width } = Dimensions.get('window');
 
 const ProfileScreen = ({ navigation }) => {
-    const { user } = useAuth();
-    const { colors, isDark } = useTheme();
-    const [profile, setProfile] = useState(null);
+    const { user, profile } = useAuth();
+    const { colors } = useTheme();
+    const [availablePlans, setAvailablePlans] = useState([]);
     const [usernameVisible, setUsernameVisible] = useState(false);
+    const [boostVisible, setBoostVisible] = useState(false);
+    const [subscription, setSubscription] = useState(null);
 
     useEffect(() => {
-        if (user) {
-            const unsubscribe = userService.subscribeToProfile(user.uid, (data) => {
-                setProfile(data);
-            });
-            return () => unsubscribe();
+        if (user && profile?.premiumTier) {
+            loadSubscription();
+        } else {
+            setSubscription(null);
         }
-    }, [user]);
+        fetchAvailablePlans();
+    }, [user, profile?.premiumTier]);
 
-    const calculateAge = (profile) => {
-        if (profile?.age) return profile.age;
-        if (!profile?.birthday) return '21';
+    const loadSubscription = async () => {
+        const sub = await subscriptionService.getUserSubscription(user.uid, profile.premiumTier);
+        setSubscription(sub);
+    };
+
+    const fetchAvailablePlans = async () => {
+        try {
+            const { collection, getDocs, query, orderBy } = require('firebase/firestore');
+            const { db } = require('../../firebase/config');
+            const q = query(collection(db, 'plans'));
+            const snap = await getDocs(q);
+            const plans = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Explicit Sort Order: Silver, Gold, Platinum
+            const order = { 'silver': 1, 'gold': 2, 'platinum': 3 };
+            plans.sort((a, b) => (order[a.id.toLowerCase()] || 99) - (order[b.id.toLowerCase()] || 99));
+            
+            setAvailablePlans(plans);
+        } catch (e) {
+            console.error('Error fetching plans:', e);
+        }
+    };
+
+    const calculateAge = (p) => {
+        if (p?.age) return p.age;
+        if (!p?.birthday) return '21';
         
-        const birthday = profile.birthday;
+        const birthday = p.birthday;
         let birthDate;
         if (typeof birthday === 'string') {
             if (birthday.includes('/')) {
@@ -39,7 +68,7 @@ const ProfileScreen = ({ navigation }) => {
             } else {
                 birthDate = new Date(birthday);
             }
-        } else if (birthday.seconds) { // Firestore timestamp
+        } else if (birthday.seconds) {
             birthDate = new Date(birthday.seconds * 1000);
         } else {
             birthDate = new Date(birthday);
@@ -52,6 +81,32 @@ const ProfileScreen = ({ navigation }) => {
         const m = today.getMonth() - birthDate.getMonth();
         if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
         return age;
+    };
+
+    const handleActivateBoost = async () => {
+        if (!user) return;
+        
+        // One-time check for account
+        if (profile?.boostsUsed >= 1) {
+            Alert.alert('Boost Used', 'The profile boost is a one-time feature per account and has already been activated.');
+            return;
+        }
+
+        // Tier Gating Check
+        if (!userService.canUseFeature(profile, '1_boost_month')) {
+            Alert.alert('Gold Feature', 'Upgrade to Gold or Platinum to activate your one-time profile boost and get 10x more visibility!', [
+                { text: 'Later' },
+                { text: 'Upgrade', onPress: () => navigation.navigate('Subscriptions') }
+            ]);
+            return;
+        }
+
+        try {
+            await swipeService.activateBoost(user.uid);
+            setBoostVisible(true);
+        } catch (error) {
+            Alert.alert('Boost Error', error.message || 'Could not activate boost. Please try again.');
+        }
     };
 
     const handleShare = async () => {
@@ -103,11 +158,11 @@ const ProfileScreen = ({ navigation }) => {
                     <View style={styles.infoBox}>
                         <View style={styles.nameRow}>
                             <Text style={[styles.nameText, { color: colors.text }]}>
-                                {profile?.firstName || 'User'}, {profileAge}
+                                {profile?.firstName || 'User'}{(!profile?.firstName?.includes(profileAge?.toString()) && profileAge) ? `, ${profileAge}` : ''}
                             </Text>
                             {profile?.isVerified && (
                                 <View style={styles.verifiedIconWrap}>
-                                    <Ionicons name="checkmark-seal" size={22} color={COLORS.primary} />
+                                    <Ionicons name="checkmark-circle" size={22} color="#FF3366" />
                                 </View>
                             )}
                         </View>
@@ -126,18 +181,29 @@ const ProfileScreen = ({ navigation }) => {
                         <Text style={[styles.statLabel, { color: colors.text }]}>Media</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('Subscription')}>
-                        <LinearGradient colors={['#4facfe', '#00f2fe']} style={styles.statIconWrap}>
+                    <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate('Likes')}>
+                        <LinearGradient colors={['#00D1FF', '#007AFF']} style={styles.statIconWrap}>
+                            <View style={styles.badgeCount}>
+                                <Text style={styles.badgeText}>{profile?.superLikes || 0}</Text>
+                            </View>
+                            <Ionicons name="star" size={22} color="white" />
+                        </LinearGradient>
+                        <Text style={[styles.statLabel, { color: colors.text }]}>Super Likes</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.statItem} onPress={handleActivateBoost}>
+                        <LinearGradient 
+                            colors={profile?.boostsUsed >= 1 ? ['#555', '#333'] : ['#4facfe', '#00f2fe']} 
+                            style={styles.statIconWrap}
+                        >
+                            {profile?.boostsUsed >= 1 && (
+                                <View style={styles.lockBadge}>
+                                    <Ionicons name="lock-closed" size={10} color="white" />
+                                </View>
+                            )}
                             <Ionicons name="flash" size={22} color="white" />
                         </LinearGradient>
                         <Text style={[styles.statLabel, { color: colors.text }]}>Boosts</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.statItem} onPress={handleShare}>
-                        <LinearGradient colors={['#667eea', '#764ba2']} style={styles.statIconWrap}>
-                            <Ionicons name="share-social" size={22} color="white" />
-                        </LinearGradient>
-                        <Text style={[styles.statLabel, { color: colors.text }]}>Invite</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -145,21 +211,116 @@ const ProfileScreen = ({ navigation }) => {
                 <View style={styles.bannerContainer}>
                     
                     {/* Completion Tracker */}
-                    <View style={[styles.glassCard, { backgroundColor: colors.surface }]}>
+                    <TouchableOpacity 
+                        style={[styles.glassCard, { backgroundColor: colors.surface }]}
+                        onPress={() => navigation.navigate('EditProfile')}
+                    >
                         <View style={styles.cardHeader}>
                             <Text style={[styles.cardTitle, { color: colors.text }]}>Profile Strength</Text>
-                            <Text style={[styles.cardValue, { color: COLORS.primary }]}>85%</Text>
+                            <Text style={[styles.cardValue, { color: '#FF3366' }]}>{userService.calculateCompletion(profile)}%</Text>
                         </View>
                         <View style={[styles.progressBarBase, { backgroundColor: colors.border }]}>
                             <LinearGradient 
                                 colors={[COLORS.primary, '#FF1493']} 
                                 start={{x:0, y:0}} end={{x:1, y:0}}
-                                style={[styles.progressBarFill, { width: '85%' }]} 
+                                style={[styles.progressBarFill, { width: `${userService.calculateCompletion(profile)}%` }]} 
                             />
                         </View>
                         <Text style={[styles.cardHint, { color: colors.textSecondary }]}>
-                            Add more photos to get 3x more matches!
+                            {userService.calculateCompletion(profile) < 100 
+                                ? "Complete your profile to get 3x more matches!"
+                                : "Excellent! Your profile is fully optimized for matches."}
                         </Text>
+                    </TouchableOpacity>
+
+                    {/* Subscription Section */}
+                    <View style={styles.planSection}>
+                        <View style={styles.sectionHeader}>
+                            <View>
+                                <Text style={[styles.sectionTitle, { color: colors.text }]}>Membership Status</Text>
+                                {profile?.hasPremium && profile?.premiumTier ? (
+                                    <Text style={[styles.expiryText, { color: COLORS.primary }]}>
+                                        {profile.premiumTier.toUpperCase()} • Expires {profile.premiumExpiry ? new Date(profile.premiumExpiry).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Next Month'}
+                                    </Text>
+                                ) : (
+                                    <Text style={[styles.expiryText, { color: colors.textSecondary }]}>Free Account • Limited Features</Text>
+                                )}
+                            </View>
+                            {profile?.hasPremium && (
+                                <View style={styles.activePlanBadge}>
+                                    <Ionicons name="shield-checkmark" size={12} color="#FFF" />
+                                    <Text style={styles.activePlanText}>ACTIVE</Text>
+                                </View>
+                            )}
+                        </View>
+
+                        <ScrollView 
+                            horizontal 
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.plansContainer}
+                            snapToInterval={width * 0.8 + 15}
+                            decelerationRate="fast"
+                        >
+                            {availablePlans.map((plan) => {
+                                const idLower = plan.id.toLowerCase();
+                                const isActive = profile?.premiumTier?.toLowerCase() === idLower;
+                                const planColors = idLower === 'silver' ? ['#C0C0C0', '#8E8E93'] :
+                                                  idLower === 'gold' ? ['#FFD700', '#FF9500'] :
+                                                  idLower === 'platinum' ? ['#E5E4E2', '#AF52DE'] : [COLORS.primary, '#FF3366'];
+
+                                return (
+                                    <TouchableOpacity 
+                                        key={plan.id}
+                                        style={[
+                                            styles.planCardHorizontal, 
+                                            { backgroundColor: colors.surface },
+                                            isActive && { borderColor: planColors[0], borderWidth: 2 }
+                                        ]}
+                                        onPress={() => navigation.navigate('Subscriptions')}
+                                    >
+                                        <LinearGradient
+                                            colors={planColors}
+                                            style={styles.planCardGradient}
+                                            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                        >
+                                            {isActive && (
+                                                <View style={styles.cardActiveBadge}>
+                                                    <Text style={styles.cardActiveText}>ACTIVE</Text>
+                                                </View>
+                                            )}
+                                            
+                                            <View style={styles.planCardHeader}>
+                                                <View>
+                                                    <Text style={styles.planTitle}>{plan.name.toUpperCase()}</Text>
+                                                    <View style={styles.planPriceRow}>
+                                                        <Text style={styles.planPriceLarge}>₹{plan.price}</Text>
+                                                        <Text style={styles.planPeriodSmall}>/ {plan.period}</Text>
+                                                    </View>
+                                                </View>
+                                                <View style={styles.planIconCircle}>
+                                                    <Ionicons 
+                                                        name={idLower === 'platinum' ? 'diamond' : (idLower === 'gold' ? 'key' : 'star')} 
+                                                        size={22} 
+                                                        color="#FFF" 
+                                                    />
+                                                </View>
+                                            </View>
+
+                                            <View style={styles.planHighlights}>
+                                                {plan.features?.slice(0, 3).map((f, i) => (
+                                                    <View key={i} style={styles.highlightItem}>
+                                                        <Ionicons name="checkmark-circle" size={12} color="#FFF" />
+                                                        <Text style={styles.highlightText} numberOfLines={1}>
+                                                            {f.replace('_', ' ').substring(0, 15)}
+                                                        </Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        </LinearGradient>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
                     </View>
 
                     {/* Username Banner */}
@@ -184,7 +345,7 @@ const ProfileScreen = ({ navigation }) => {
                         </TouchableOpacity>
                     )}
 
-                    {/* Verification / Needs Reverify */}
+                    {/* Verification */}
                     {profile?.needsReverify ? (
                         <TouchableOpacity 
                             style={[styles.glassCard, { backgroundColor: '#FF336610', borderColor: '#FF336630', borderWidth: 1 }]}
@@ -198,7 +359,18 @@ const ProfileScreen = ({ navigation }) => {
                                 </View>
                             </View>
                         </TouchableOpacity>
-                    ) : !profile?.isVerified && (
+                    ) : profile?.isVerified ? (
+                        <View style={styles.verifyBanner}>
+                            <LinearGradient
+                                colors={['#00C853', '#00E676']}
+                                style={styles.verifyGradient}
+                            >
+                                <Ionicons name="checkmark-circle" size={22} color="white" />
+                                <Text style={styles.verifyText}>Profile Verified</Text>
+                                <Ionicons name="checkmark-circle" size={18} color="white" />
+                            </LinearGradient>
+                        </View>
+                    ) : !profile?.verificationPending && (
                         <TouchableOpacity 
                             style={styles.verifyBanner}
                             onPress={() => navigation.navigate('PhotoVerification')}
@@ -213,28 +385,11 @@ const ProfileScreen = ({ navigation }) => {
                             </LinearGradient>
                         </TouchableOpacity>
                     )}
-
-                    {/* Premium Upgrade */}
-                    <TouchableOpacity 
-                        style={styles.premiumCard}
-                        onPress={() => navigation.navigate('Subscription')}
-                    >
-                        <LinearGradient
-                            colors={['#1a1a1a', '#000000']}
-                            style={styles.premiumGradient}
-                        >
-                            <View style={styles.premiumInfo}>
-                                <Text style={styles.premiumHeading}>SPARK PREMIUM</Text>
-                                <Text style={styles.premiumSubHeading}>Unlock the full experience</Text>
-                            </View>
-                            <View style={styles.premiumIconBox}>
-                                <Ionicons name="diamond" size={28} color={COLORS.primary} />
-                            </View>
-                        </LinearGradient>
-                    </TouchableOpacity>
+                    
+                    <AdBanner placement="profile_bottom" style={{ marginTop: 20 }} />
                 </View>
 
-                {/* Legal / Secondary */}
+                {/* Footer */}
                 <View style={styles.footerSection}>
                     <TouchableOpacity style={styles.footerLink} onPress={() => navigation.navigate('SafetyCenter')}>
                         <Ionicons name="shield-outline" size={18} color={colors.textSecondary} />
@@ -253,6 +408,11 @@ const ProfileScreen = ({ navigation }) => {
                 onClose={() => setUsernameVisible(false)}
                 uid={user?.uid}
                 currentUsername={profile?.username}
+            />
+
+            <BoostModal 
+                visible={boostVisible}
+                onClose={() => setBoostVisible(false)}
             />
         </SafeAreaView>
     );
@@ -394,6 +554,62 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '500',
     },
+    planSection: { marginTop: 25 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingHorizontal: 5 },
+    sectionTitle: { fontSize: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+    expiryText: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+    activePlanBadge: { backgroundColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    activePlanText: { color: 'white', fontSize: 11, fontWeight: '900' },
+    freeTag: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+    plansContainer: { paddingHorizontal: 0, gap: 15, paddingBottom: 10 },
+    planCardHorizontal: {
+        width: width * 0.82,
+        borderRadius: 32,
+        overflow: 'hidden',
+        height: 180,
+        elevation: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+    },
+    planCardGradient: { flex: 1, padding: 24, justifyContent: 'space-between', position: 'relative' },
+    cardActiveBadge: {
+        position: 'absolute',
+        top: 15,
+        right: 15,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+    cardActiveText: { color: '#FFF', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+    planCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    planIconCircle: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    planTitle: { fontSize: 22, fontWeight: '900', color: '#FFF', letterSpacing: 1, marginBottom: 5 },
+    planPriceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },
+    planPriceLarge: { fontSize: 32, fontWeight: '900', color: '#FFF' },
+    planPeriodSmall: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.7)' },
+    planHighlights: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    highlightItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+    },
+    highlightText: { fontSize: 10, fontWeight: '900', color: '#FFF', textTransform: 'uppercase' },
     promoBanner: {
         borderRadius: 24,
         overflow: 'hidden',
@@ -451,37 +667,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         marginTop: 2,
     },
-    premiumCard: {
-        borderRadius: 24,
-        overflow: 'hidden',
-        marginTop: 10,
-    },
-    premiumGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 24,
-    },
-    premiumHeading: {
-        color: 'white',
-        fontSize: 18,
-        fontWeight: '900',
-        letterSpacing: 1,
-    },
-    premiumSubHeading: {
-        color: COLORS.primary,
-        fontSize: 13,
-        fontWeight: '700',
-        marginTop: 4,
-    },
-    premiumIconBox: {
-        width: 54,
-        height: 54,
-        borderRadius: 27,
-        backgroundColor: '#222',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
     footerSection: {
         flexDirection: 'row',
         justifyContent: 'center',
@@ -497,6 +682,40 @@ const styles = StyleSheet.create({
     footerLinkText: {
         fontSize: 13,
         fontWeight: '600',
+    },
+    badgeCount: {
+        position: 'absolute',
+        top: -5,
+        right: -5,
+        backgroundColor: '#FF3366',
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#000',
+        zIndex: 10,
+    },
+    badgeText: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: '900',
+        paddingHorizontal: 4,
+    },
+    lockBadge: {
+        position: 'absolute',
+        top: -5,
+        right: -5,
+        backgroundColor: '#555',
+        borderRadius: 10,
+        width: 18,
+        height: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#000',
+        zIndex: 10,
     }
 });
 

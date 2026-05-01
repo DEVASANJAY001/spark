@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc, serverTimestamp, onSnapshot, limit, orderBy, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { userService } from './userService';
+import { notificationService } from './notificationService';
 
 const calculateAge = (birthday) => {
     if (!birthday) return null;
@@ -163,12 +164,29 @@ export const swipeService = {
     /**
      * Activate a 20-minute profile boost
      */
-    activateBoost: async (uid) => {
+    activateBoost: async (uid, subscription = null) => {
         try {
-            const boostExpiresAt = Date.now() + 20 * 60 * 1000; // 20 minutes from now
             const userRef = doc(db, 'users', uid);
-            await updateDoc(userRef, { boostExpiresAt });
-            console.log(`[SwipeService] Boost activated for ${uid}, expires at ${new Date(boostExpiresAt).toISOString()}`);
+            const userSnap = await getDoc(userRef);
+            const userData = userSnap.data() || {};
+
+            const now = new Date();
+            const currentMonth = `${now.getFullYear()}-${now.getMonth()}`;
+            const lastBoostMonth = userData.lastBoostMonth || '';
+
+            if (lastBoostMonth === currentMonth && !subscription?.features?.includes('unlimited_boosts')) {
+                // Check if they have a monthly allowance
+                if (userData.monthlyBoostsUsed >= 1 && subscription?.features?.includes('1_boost_month')) {
+                    throw new Error('BOOST_LIMIT_REACHED');
+                }
+            }
+
+            const boostExpiresAt = Date.now() + 30 * 60 * 1000; // 30 minutes from now
+            await updateDoc(userRef, { 
+                boostExpiresAt,
+                lastBoostMonth: currentMonth,
+                monthlyBoostsUsed: (lastBoostMonth === currentMonth ? (userData.monthlyBoostsUsed || 0) + 1 : 1)
+            });
             return boostExpiresAt;
         } catch (error) {
             console.error('Error activating boost:', error);
@@ -179,21 +197,52 @@ export const swipeService = {
     /**
      * Handle a swipe action
      */
-    handleSwipe: async (currentUid, targetUid, type) => {
+    handleSwipe: async (currentUid, targetUid, type, subscription = null) => {
         try {
-            // 1. Record the swipe
-            const swipeRef = doc(db, 'users', currentUid, 'swipes', targetUid);
-            try {
-                await setDoc(swipeRef, {
-                    type,
-                    timestamp: serverTimestamp()
-                });
-            } catch (e) {
-                console.error(`[handleSwipe] Failed to record swipe on users/${currentUid}/swipes/${targetUid}:`, e);
-                throw e;
+            // 0. Check daily limit if not premium
+            const userRef = doc(db, 'users', currentUid);
+            const userSnap = await getDoc(userRef);
+            const userData = userSnap.data() || {};
+            
+            const today = new Date().toISOString().split('T')[0];
+            const lastSwipeDate = userData.lastSwipeDate || '';
+            let currentCount = lastSwipeDate === today ? (userData.dailySwipeCount || 0) : 0;
+
+            const hasUnlimitedSwipes = userService.canUseFeature(userData, 'unlimited_swipes');
+            if (currentCount >= 50 && !hasUnlimitedSwipes) {
+                throw new Error('LIMIT_REACHED');
             }
 
+            // 1. Record the swipe
+            const swipeRef = doc(db, 'users', currentUid, 'swipes', targetUid);
+            await setDoc(swipeRef, {
+                type,
+                timestamp: serverTimestamp()
+            });
+
+            // 2. Increment count
+            await updateDoc(userRef, {
+                dailySwipeCount: currentCount + 1,
+                lastSwipeDate: today
+            });
+
             if (type === 'like' || type === 'superlike') {
+                // 1.1 Check Super Like Limit
+                if (type === 'superlike') {
+                    const lastSuperDate = userData.lastSuperDate || '';
+                    let superCount = lastSuperDate === today ? (userData.dailySuperCount || 0) : 0;
+                    
+                    const maxSuper = userService.canUseFeature(userData, '5_super_likes_day') ? 5 : 0;
+                    if (superCount >= maxSuper) {
+                        throw new Error('SUPER_LIMIT_REACHED');
+                    }
+
+                    await updateDoc(userRef, {
+                        dailySuperCount: superCount + 1,
+                        lastSuperDate: today
+                    });
+                }
+
                 // 2. Add to target user's likes collection
                 const likeRef = doc(db, 'users', targetUid, 'likes', currentUid);
                 try {
@@ -205,6 +254,29 @@ export const swipeService = {
                 } catch (e) {
                     console.error(`[handleSwipe] Failed to write like on users/${targetUid}/likes/${currentUid}:`, e);
                     throw e;
+                }
+
+                // 2.1 Send Notification to target user
+                try {
+                    const targetProfile = await userService.getProfile(targetUid);
+                    if (targetProfile?.expoPushToken) {
+                        const encourageTexts = [
+                            "Someone just Sparked you! 🔥 Check out your likes and find a match.",
+                            "You have a new admirer! 😍 Tap to see who's interested.",
+                            "It's a hot day! Someone just liked your profile. ⚡",
+                            "New connection alert! Check your new likes now. ✨"
+                        ];
+                        const randomText = encourageTexts[Math.floor(Math.random() * encourageTexts.length)];
+                        
+                        await notificationService.sendPushNotification(
+                            targetProfile.expoPushToken,
+                            type === 'superlike' ? "Someone Super Liked you! ⭐" : "New Like! ❤️",
+                            randomText,
+                            { type: 'like', fromUid: currentUid }
+                        );
+                    }
+                } catch (err) {
+                    console.warn('[SwipeService] Like notification failed:', err);
                 }
 
                 // 3. Check for mutual match
@@ -385,6 +457,47 @@ export const swipeService = {
             return results;
         } catch (error) {
             console.error('Error getting top picks:', error);
+            return [];
+        }
+    },
+
+    /**
+     * Get users by category
+     */
+    getProfilesByCategory: async (uid, category, interestedIn) => {
+        try {
+            const usersRef = collection(db, 'users');
+            const baseConstraints = [
+                where('isProfileComplete', '==', true),
+                where('selectedCategory', '==', category)
+            ];
+
+            if (interestedIn !== 'Everyone') {
+                const targetGender = interestedIn === 'Women' ? 'Woman' : 'Man';
+                baseConstraints.push(where('gender', '==', targetGender));
+            }
+
+            const q = query(usersRef, ...baseConstraints, limit(50));
+            const querySnapshot = await getDocs(q);
+
+            const swipesRef = collection(db, 'users', uid, 'swipes');
+            const swipesSnapshot = await getDocs(swipesRef);
+            const swipedUids = swipesSnapshot.docs.map(doc => doc.id);
+            swipedUids.push(uid);
+
+            const fetchPromises = querySnapshot.docs
+                .filter(doc => !swipedUids.includes(doc.id))
+                .map(async (userDoc) => {
+                    const firestoreData = userDoc.data();
+                    const profile = await userService.getProfile(userDoc.id);
+                    const data = { id: userDoc.id, ...firestoreData, ...profile };
+                    const age = data.age || calculateAge(data.birthday) || 21;
+                    return { ...data, age, photos: data.photos || [] };
+                });
+
+            return (await Promise.all(fetchPromises)).filter(r => r !== null);
+        } catch (error) {
+            console.error('Error in getProfilesByCategory:', error);
             return [];
         }
     }

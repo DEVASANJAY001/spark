@@ -4,6 +4,7 @@ import { userService } from './userService';
 import { encryptionService } from './encryptionService';
 import { ref as rtdbRef, set, onValue } from 'firebase/database';
 import { rtdb } from '../firebase/config';
+import { notificationService } from './notificationService';
 
 export const chatService = {
     /**
@@ -37,18 +38,20 @@ export const chatService = {
     getNewMatches: (uid, callback) => {
         const q = query(
             collection(db, 'matches'),
-            where('users', 'array-contains', uid),
-            where('hasMessages', '==', false)
+            where('users', 'array-contains', uid)
         );
         return onSnapshot(q, async (snapshot) => {
-            const matches = await Promise.all(snapshot.docs.map(async (matchDoc) => {
+            const hydrated = await Promise.all(snapshot.docs.map(async (matchDoc) => {
                 const matchData = matchDoc.data();
                 const otherUid = matchData.users.find(id => id !== uid);
                 const profile = await chatService._hydrateProfile(otherUid);
                 return { id: matchDoc.id, ...matchData, otherUser: profile };
             }));
 
-            // Sort by createdAt desc in-memory
+            // Filter for new matches: must NOT have messages AND must have the newMatch flag
+            const matches = hydrated.filter(m => !m.hasMessages && !m.lastMessage && m.newMatch !== false);
+
+            // Sort by createdAt desc
             matches.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
             callback(matches);
@@ -56,17 +59,42 @@ export const chatService = {
     },
 
     /**
+     * Get the current count of active conversations for a user
+     */
+    getActiveConversationCount: async (uid) => {
+        const { getDocs } = await import('firebase/firestore');
+        const q = query(
+            collection(db, 'matches'),
+            where('users', 'array-contains', uid)
+        );
+        const snapshot = await getDocs(q);
+        // An active conversation is one with hasMessages: true OR lastMessage existing
+        return snapshot.docs.filter(doc => {
+            const data = doc.data();
+            return data.hasMessages === true || data.lastMessage || data.lastMessageAt;
+        }).length;
+    },
+
+    /**
+     * Check if a user can start a new conversation thread
+     */
+    canStartNewChat: async (uid, tier) => {
+        const count = await chatService.getActiveConversationCount(uid);
+        const limit = userService.getChatLimit(tier);
+        return count < limit;
+    },
+
+    /**
      * Get active conversations (message list)
-     * hasMessages: true
+     * Shows matches that have at least one message or the hasMessages flag set
      */
     getConversations: (uid, callback) => {
         const q = query(
             collection(db, 'matches'),
-            where('users', 'array-contains', uid),
-            where('hasMessages', '==', true)
+            where('users', 'array-contains', uid)
         );
         return onSnapshot(q, async (snapshot) => {
-            const conversations = await Promise.all(snapshot.docs.map(async (matchDoc) => {
+            const hydrated = await Promise.all(snapshot.docs.map(async (matchDoc) => {
                 const matchData = matchDoc.data();
                 const otherUid = matchData.users.find(id => id !== uid);
                 const profile = await chatService._hydrateProfile(otherUid);
@@ -74,18 +102,53 @@ export const chatService = {
                 // Decrypt last message if key exists
                 let lastMessage = matchData.lastMessage;
                 if (matchData.sharedKey && lastMessage) {
-                    lastMessage = encryptionService.decrypt(lastMessage, matchData.sharedKey);
+                    try {
+                        lastMessage = encryptionService.decrypt(lastMessage, matchData.sharedKey);
+                    } catch (e) {
+                        console.warn('Decryption failed for last message');
+                    }
                 }
+
+                // High-Reliability Fallback: If lastMessage is missing but we have a timestamp, 
+                // try to fetch the actual last message from the subcollection.
+                let displayTime = matchData.lastMessageAt;
+                if (!lastMessage && matchData.lastMessageAt) {
+                    try {
+                        const { getDocs, query, collection, orderBy, limit } = await import('firebase/firestore');
+                        const lastMsgQ = query(
+                            collection(db, 'matches', matchDoc.id, 'messages'),
+                            orderBy('createdAt', 'desc'),
+                            limit(1)
+                        );
+                        const lastMsgSnap = await getDocs(lastMsgQ);
+                        if (!lastMsgSnap.empty) {
+                            const lastMsgData = lastMsgSnap.docs[0].data();
+                            lastMessage = lastMsgData.text;
+                            displayTime = lastMsgData.createdAt || matchData.lastMessageAt;
+                            if (lastMsgData.isEncrypted && matchData.sharedKey) {
+                                lastMessage = encryptionService.decrypt(lastMessage, matchData.sharedKey);
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('Failed to fetch fallback last message:', err);
+                    }
+                }
+
+                const displayMessage = lastMessage || (matchData.hasMessages ? 'Sent a message' : 'New connection');
 
                 return {
                     id: matchDoc.id,
                     ...matchData,
-                    lastMessage,
+                    lastMessage: displayMessage,
+                    lastMessageAt: displayTime,
                     otherUser: profile
                 };
             }));
 
-            // Sort by lastMessageAt desc in-memory
+            // Filter for active conversations: must have messages OR hasMessages flag
+            const conversations = hydrated.filter(m => m.hasMessages === true || m.lastMessage || m.lastMessageAt);
+
+            // Sort by lastMessageAt desc
             conversations.sort((a, b) => (b.lastMessageAt?.seconds || 0) - (a.lastMessageAt?.seconds || 0));
 
             callback(conversations);
@@ -186,6 +249,52 @@ export const chatService = {
             newMatch: false,
             unreadBy: []
         });
+
+        // 4. Send Push Notification to recipient
+        try {
+            const recipientId = matchId.split('_').find(id => id !== senderId);
+            const [recipientProfile, senderProfile] = await Promise.all([
+                chatService._hydrateProfile(recipientId),
+                chatService._hydrateProfile(senderId)
+            ]);
+
+            if (recipientProfile?.expoPushToken) {
+                await notificationService.sendPushNotification(
+                    recipientProfile.expoPushToken,
+                    senderProfile?.firstName || 'New Message',
+                    text,
+                    { matchId, type: 'chat' }
+                );
+            }
+        } catch (error) {
+            console.error('[ChatService] Notification trigger failed:', error);
+        }
+    },
+
+    /**
+     * Toggle or update a reaction on a message
+     */
+    toggleReaction: async (matchId, messageId, uid, emoji) => {
+        try {
+            const messageRef = doc(db, 'matches', matchId, 'messages', messageId);
+            const messageSnap = await getDoc(messageRef);
+            if (!messageSnap.exists()) return;
+            
+            const data = messageSnap.data();
+            const reactions = data.reactions || {};
+            
+            // Toggle the emoji for this user
+            if (reactions[uid] === emoji) {
+                delete reactions[uid]; // Remove if same emoji
+            } else {
+                reactions[uid] = emoji; // Set/update emoji
+            }
+            
+            await updateDoc(messageRef, { reactions });
+        } catch (error) {
+            console.error('[ChatService] Toggle reaction failed:', error);
+            throw error;
+        }
     },
 
     /**
