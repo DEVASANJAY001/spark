@@ -82,7 +82,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
 
             // Hardware back button override
             const backAction = () => {
-                navigation.navigate('ChatList');
+                navigation.navigate('Main', { screen: 'Chat' });
                 return true;
             };
             const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
@@ -98,7 +98,7 @@ const ChatDetailScreen = ({ route, navigation }) => {
     }, [user, matchId, otherUser, profile?.premiumTier]);
 
     const handleBack = () => {
-        navigation.navigate('ChatList');
+        navigation.navigate('Main', { screen: 'Chat' });
     };
 
     const loadSubscription = async () => {
